@@ -8,6 +8,7 @@ A team workspace for Markdown. Files stay plain `.md` files. People can edit the
 - Server: Hono on Node, SQLite, Drizzle
 - Live edits: WebSocket, built into `@hono/node-server` (`@hono/node-ws` is deprecated)
 - Documents: UTF-8 Markdown, last 10 versions per file
+- Agent: the app talks to a running OpenCode server over its HTTP API and streams events
 
 ## Run it
 
@@ -40,3 +41,16 @@ Server data defaults to `./data/opencharta.sqlite`. Override with `OPENCHARTA_DA
 Permissions are workspace-wide. Folder-level access is not in this version.
 
 The local folder is a normal directory of `.md` files plus a hidden `.opencharta/index.json`. It is not object storage. The server keeps the shared copy in SQLite.
+
+## Agent
+
+The app has an Agent panel that connects to an OpenCode server on the same Mac. Open the panel from the header, choose a sync folder, and type what you want changed. The agent edits files in that folder; the app notices the change and applies it to the open document live, then syncs it to the server like any other edit.
+
+The agent works in the synced folder, so it acts on real `.md` files. Files the agent creates appear in the tree. Edits to a document that is open are applied as a live collaborative change, so nobody's typing is overwritten and both sides merge.
+
+Connection:
+
+- **Find the server automatically** (default): OpenCharta reads the running server's registration file from `$XDG_STATE_HOME/opencode/service.json` (usually `~/.local/state/opencode/service.json`) and authenticates with its password.
+- **Use a specific address**: point OpenCharta at any `opencode serve` instance, with an optional password.
+
+The panel shows the connection state, streams the agent's thinking and tool calls, lets you stop a turn, and asks you before anything needs permission. The conversation is remembered per sync folder across restarts; use **New chat** to start fresh.

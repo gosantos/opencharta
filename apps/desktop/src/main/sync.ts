@@ -39,26 +39,33 @@ export async function syncFolder(input: {
   serverUrl: string
   token: string
   workspaceId: string
+  live?: { nodeId: string; path: string } | null
 }): Promise<SyncResult> {
   const indexPath = join(input.root, LOCAL_INDEX_DIR, "index.json")
   const index = readIndex(indexPath, input.workspaceId)
   const api = new Api(input.serverUrl, input.token)
+  const live = input.live ?? null
   let changed = false
   let note = "Synced"
 
   for (let pass = 0; pass < 4; pass += 1) {
     const remote = await api.nodes(input.workspaceId)
     const local = scan(input.root)
-    const actions = planSync({
+    const planned = planSync({
       remote: remote.map(toRemote),
       local,
       index: index.nodes,
       conflictDate: new Date().toISOString().slice(0, 10),
     })
-    if (actions.length === 0) break
+    const actions = live ? planned.filter((action) => !touchesLive(action, live)) : planned
+    if (actions.length === 0) {
+      reconcileLive(index, live, local, remote)
+      break
+    }
     const outcome = await applyActions(input.root, input.workspaceId, api, index, actions)
     changed = true
     if (outcome.note) note = outcome.note
+    reconcileLive(index, live, local, remote)
     if (!outcome.progress) break
   }
 
@@ -66,6 +73,41 @@ export async function syncFolder(input: {
   index.cursor = changes.cursor
   writeIndex(indexPath, index)
   return { changed, message: note }
+}
+
+function touchesLive(action: SyncAction, live: { nodeId: string; path: string }) {
+  if ("nodeId" in action && action.nodeId === live.nodeId) return true
+  const record = action as Record<string, unknown>
+  return record.path === live.path || record.from === live.path || record.to === live.path
+}
+
+/**
+ * The open document is written through the live editing channel, not the folder.
+ * Pin its index entry to the current disk bytes so the next pass does not treat
+ * the agent's edit as a folder change to push or pull.
+ */
+function reconcileLive(
+  index: FolderIndex,
+  live: { nodeId: string; path: string } | null,
+  local: LocalEntry[],
+  remote: WorkspaceNode[],
+) {
+  if (!live) return
+  const remoteNode = remote.find((node) => node.id === live.nodeId)
+  if (!remoteNode) {
+    index.nodes = index.nodes.filter((entry) => entry.nodeId !== live.nodeId)
+    return
+  }
+  const localFile = local.find((entry) => entry.path === remoteNode.path && entry.kind === "file")
+  if (!localFile) return
+  index.nodes = index.nodes.filter((entry) => entry.nodeId !== live.nodeId)
+  index.nodes.push({
+    nodeId: live.nodeId,
+    path: remoteNode.path,
+    kind: remoteNode.kind,
+    baseRevision: remoteNode.revision,
+    contentHash: localFile.contentHash,
+  })
 }
 
 async function applyActions(

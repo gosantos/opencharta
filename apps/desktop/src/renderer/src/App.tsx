@@ -19,7 +19,7 @@ function AppInner() {
   const [state, setState] = useState<DesktopState | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
-  const [sync, setSync] = useState<SyncStatus>({ state: "idle", message: "Not synced to a folder", root: null })
+  const [sync, setSync] = useState<SyncStatus>({ state: "idle", message: "Not synced to a folder", root: null, changed: false })
 
   useEffect(() => {
     const stop = window.opencharta.onSync(setSync)

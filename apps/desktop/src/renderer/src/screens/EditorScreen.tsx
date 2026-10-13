@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import DOMPurify from "dompurify"
 import { marked } from "marked"
 import { roleAtLeast, type CollabPeer, type Member, type RevisionSummary, type Role, type User, type Workspace, type WorkspaceNode } from "@opencharta/shared"
@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { SyncStatus } from "../../../shared/bridge"
+import { AgentPanel } from "../components/AgentPanel"
 import { MarkdownEditor } from "../components/MarkdownEditor"
 import { Api, ApiError } from "../lib/api"
 import { LiveDoc } from "../lib/collab"
@@ -47,6 +48,8 @@ export function EditorScreen({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [membersOpen, setMembersOpen] = useState(false)
   const [mode, setMode] = useState<"edit" | "view">("edit")
+  const [agentOpen, setAgentOpen] = useState(true)
+  const liveRef = useRef<LiveDoc | null>(null)
   const canEdit = roleAtLeast(workspace.role, "editor")
   const selected = nodes.find((node) => node.id === selectedId && node.kind === "file") ?? null
 
@@ -68,9 +71,23 @@ export function EditorScreen({
     void window.opencharta.setTitle(selected ? `${selected.name} — OpenCharta` : workspace.name)
   }, [selected, workspace.name])
 
+  // Tell the main process which document is open so the agent's edits to it can
+  // be applied live instead of colliding with the open editor.
+  useEffect(() => {
+    void window.opencharta.docSetOpen(selected ? { nodeId: selected.id, path: selected.path } : null)
+  }, [selected?.id, selected?.path])
+
+  useEffect(() => {
+    return window.opencharta.onDocExternal((change) => {
+      if (change.nodeId !== selectedId) return
+      const doc = liveRef.current
+      if (doc) applyExternalEdit(doc, change.content)
+    })
+  }, [selectedId])
+
   return (
-    <div className="grid h-full grid-cols-[240px_1fr] bg-white text-black">
-      <aside className="flex min-h-0 flex-col border-r border-border">
+    <div className="flex h-full bg-white text-black">
+      <aside className="flex w-[240px] shrink-0 flex-col border-r border-border">
         <div className="drag flex h-14 items-end px-4 pb-3 pl-20">
           <button type="button" className="no-drag text-left" onClick={() => void onBack()}>
             <span className="block text-sm font-medium">OpenCharta</span>
@@ -103,7 +120,7 @@ export function EditorScreen({
           </div>
         ) : null}
       </aside>
-      <section className="flex min-w-0 flex-col">
+      <section className="flex min-w-0 flex-1 flex-col">
         <header className="drag flex h-14 items-center justify-between gap-4 border-b border-border px-6">
           <div className="no-drag min-w-0">
             <p className="truncate text-sm">{selected?.path ?? "No file open"}</p>
@@ -129,6 +146,9 @@ export function EditorScreen({
                 History
               </Button>
             ) : null}
+            <Button variant="ghost" size="sm" onClick={() => setAgentOpen((open) => !open)}>
+              {agentOpen ? "Hide agent" : "Agent"}
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => void onSignOut()}>
               Sign out
             </Button>
@@ -145,12 +165,22 @@ export function EditorScreen({
               node={selected}
               userId={user.id}
               viewing={mode === "view" || !canEdit}
+              onLiveDoc={(doc) => {
+                liveRef.current = doc
+              }}
             />
           ) : (
             <p className="font-serif text-xl text-muted-foreground">Select a file, or create one.</p>
           )}
         </div>
       </section>
+      {agentOpen ? (
+        <AgentPanel
+          syncRoot={sync.root}
+          onClose={() => setAgentOpen(false)}
+          onFilesChanged={() => void refresh()}
+        />
+      ) : null}
       <NameDialog
         open={creating !== null}
         title={creating === "folder" ? "New folder" : "New file"}
@@ -280,6 +310,7 @@ function Document({
   node,
   userId,
   viewing,
+  onLiveDoc,
 }: {
   serverUrl: string
   token: string
@@ -287,12 +318,15 @@ function Document({
   node: WorkspaceNode
   userId: string
   viewing: boolean
+  onLiveDoc?: (doc: LiveDoc | null) => void
 }) {
   const [live, setLive] = useState<LiveDoc | null>(null)
   const [ready, setReady] = useState(false)
   const [peers, setPeers] = useState<CollabPeer[]>([])
   const [preview, setPreview] = useState("")
   const [error, setError] = useState("")
+  const liveDocRef = useRef(onLiveDoc)
+  liveDocRef.current = onLiveDoc
 
   useEffect(() => {
     const doc = new LiveDoc(serverUrl, workspaceId, node.id, token, {
@@ -307,11 +341,13 @@ function Document({
     })
     doc.text.observe(() => setPreview(doc.text.toString()))
     setLive(doc)
+    liveDocRef.current?.(doc)
     return () => {
       doc.checkpoint()
       doc.destroy()
       setLive(null)
       setReady(false)
+      liveDocRef.current?.(null)
     }
   }, [serverUrl, workspaceId, node.id, token])
 
@@ -336,6 +372,30 @@ function Document({
 function presence(names: string[]) {
   if (names.length === 1) return `${names[0]} is here`
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)} are here`
+}
+
+/**
+ * Apply a file the agent rewrote as a live editing change. Only the differing
+ * middle section is replaced, so anyone typing elsewhere in the same document
+ * keeps their work instead of being overwritten.
+ */
+function applyExternalEdit(doc: LiveDoc, content: string) {
+  const text = doc.text
+  const current = text.toString()
+  if (current === content) return
+  let start = 0
+  const shortest = Math.min(current.length, content.length)
+  while (start < shortest && current[start] === content[start]) start += 1
+  let endCurrent = current.length
+  let endNext = content.length
+  while (endCurrent > start && endNext > start && current[endCurrent - 1] === content[endNext - 1]) {
+    endCurrent -= 1
+    endNext -= 1
+  }
+  doc.doc.transact(() => {
+    if (endCurrent > start) text.delete(start, endCurrent - start)
+    if (endNext > start) text.insert(start, content.slice(start, endNext))
+  })
 }
 
 function NameDialog({

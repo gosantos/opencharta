@@ -184,3 +184,47 @@ body {
 .cm-gutters {
   display: none;
 }
+
+.agent-markdown {
+  color: #111111;
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.agent-markdown p,
+.agent-markdown ul,
+.agent-markdown ol {
+  margin: 0.4rem 0;
+}
+
+.agent-markdown ul,
+.agent-markdown ol {
+  padding-left: 1.1rem;
+}
+
+.agent-markdown h1,
+.agent-markdown h2,
+.agent-markdown h3 {
+  margin: 0.6rem 0 0.3rem;
+  font-weight: 500;
+}
+
+.agent-markdown code {
+  background: #f4f4f4;
+  font-family: var(--font-sans);
+  font-size: 0.85em;
+  padding: 0.1em 0.3em;
+}
+
+.agent-markdown pre {
+  overflow: auto;
+  background: #f6f6f6;
+  padding: 0.6rem;
+  font-size: 0.75rem;
+}
+
+.agent-markdown pre code {
+  background: transparent;
+  padding: 0;
+}

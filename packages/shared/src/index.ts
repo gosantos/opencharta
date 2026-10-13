@@ -504,3 +504,71 @@ export function wsUrl(serverUrl: string, workspaceId: string, nodeId: string, to
   url.searchParams.set("token", token)
   return url.toString()
 }
+
+export type AgentMode = "auto" | "manual"
+
+export type AgentSettings = {
+  mode: AgentMode
+  url: string
+  password: string
+}
+
+export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
+  mode: "auto",
+  url: "",
+  password: "",
+}
+
+export type AgentConnectionState = "idle" | "connecting" | "ready" | "error"
+
+export type AgentStatus = {
+  state: AgentConnectionState
+  message: string
+  url: string | null
+  version: string | null
+  directory: string | null
+}
+
+export type AgentPart =
+  | { kind: "text"; id: string; text: string }
+  | { kind: "reasoning"; id: string; text: string }
+  | { kind: "error"; id: string; text: string }
+  | {
+      kind: "tool"
+      id: string
+      name: string
+      input?: unknown
+      status: "running" | "completed" | "error"
+      output?: string
+    }
+
+export type AgentMessage = {
+  id: string
+  role: "user" | "assistant"
+  at: number
+  parts: AgentPart[]
+}
+
+export type AgentPermission = {
+  id: string
+  action: string
+  resources: string[]
+  message?: string
+}
+
+export type AgentPermissionDecision = "once" | "always" | "reject"
+
+export type AgentState = {
+  status: AgentStatus
+  settings: AgentSettings
+  messages: AgentMessage[]
+  running: boolean
+  permissions: AgentPermission[]
+}
+
+/** A file the agent changed on disk while it was open in the editor. */
+export type DocExternalChange = {
+  nodeId: string
+  path: string
+  content: string
+}
