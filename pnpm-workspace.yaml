@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+  electron: true
+minimumReleaseAgeExclude:
+  - '@hono/node-server@2.1.5'
