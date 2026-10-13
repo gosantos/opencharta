@@ -5,6 +5,10 @@ import type { DesktopState, SyncStatus } from "../shared/bridge"
 import { loadState, saveState } from "./state"
 import { syncFolder } from "./sync"
 
+if (!app.isPackaged && process.env.OPENCHARTA_DEBUG_PORT) {
+  app.commandLine.appendSwitch("remote-debugging-port", process.env.OPENCHARTA_DEBUG_PORT)
+}
+
 let window: BrowserWindow | null = null
 let state: DesktopState
 let watcher: ReturnType<typeof watch> | null = null
@@ -92,6 +96,23 @@ function createWindow() {
       sandbox: false,
     },
   })
+
+  if (!app.isPackaged) {
+    window.webContents.on("console-message", (...args: unknown[]) => {
+      const detail = args.find((arg) => typeof arg === "object" && arg !== null) as
+        | { message?: string; lineNumber?: number; sourceId?: string }
+        | undefined
+      const message =
+        detail?.message ?? args.find((arg) => typeof arg === "string" && arg.length > 0) ?? ""
+      console.log(`[renderer] ${String(message)}`)
+    })
+    window.webContents.on("render-process-gone", (_event, details) => {
+      console.error(`[renderer] process gone: ${details.reason} (${details.exitCode})`)
+    })
+    window.webContents.on("did-fail-load", (_event, code, description, url) => {
+      console.error(`[renderer] failed to load ${url}: ${description} (${code})`)
+    })
+  }
 
   if (process.env.ELECTRON_RENDERER_URL) window.loadURL(process.env.ELECTRON_RENDERER_URL)
   else window.loadFile(join(__dirname, "../renderer/index.html"))

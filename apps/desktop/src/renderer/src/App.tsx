@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { Component, useEffect, useState, type ReactNode } from "react"
 import type { DesktopState, SyncStatus } from "../../shared/bridge"
 import type { User, Workspace } from "@opencharta/shared"
 import { Api } from "./lib/api"
@@ -7,6 +7,14 @@ import { EditorScreen } from "./screens/EditorScreen"
 import { WorkspaceScreen } from "./screens/WorkspaceScreen"
 
 export function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
+  )
+}
+
+function AppInner() {
   const [ready, setReady] = useState(false)
   const [state, setState] = useState<DesktopState | null>(null)
   const [user, setUser] = useState<User | null>(null)
@@ -112,4 +120,33 @@ function Shell({ children }: { children?: React.ReactNode }) {
       <div className="no-drag h-full pl-24">{children}</div>
     </main>
   )
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { message: string | null }> {
+  state: { message: string | null } = { message: null }
+
+  static getDerivedStateFromError(error: unknown) {
+    return { message: error instanceof Error ? error.message : "Something went wrong." }
+  }
+
+  render() {
+    if (this.state.message) {
+      return (
+        <main className="grid h-full place-items-center bg-white text-black">
+          <div className="max-w-sm text-center">
+            <p className="font-serif text-xl">This view hit a problem.</p>
+            <p className="mt-2 text-sm text-muted-foreground">{this.state.message}</p>
+            <button
+              type="button"
+              className="mt-4 rounded-md border border-border px-3 py-1.5 text-sm"
+              onClick={() => this.setState({ message: null })}
+            >
+              Try again
+            </button>
+          </div>
+        </main>
+      )
+    }
+    return this.props.children
+  }
 }

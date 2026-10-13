@@ -298,6 +298,7 @@ function Document({
     const doc = new LiveDoc(serverUrl, workspaceId, node.id, token, {
       onReady: () => {
         setReady(true)
+        setError("")
         setPreview(doc.text.toString())
       },
       onPeers: setPeers,

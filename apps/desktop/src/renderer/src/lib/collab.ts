@@ -6,6 +6,7 @@ export class LiveDoc {
   readonly text: Y.Text
   private socket: WebSocket | null = null
   private ready = false
+  private disposed = false
 
   constructor(
     serverUrl: string,
@@ -26,19 +27,25 @@ export class LiveDoc {
     })
     this.socket = new WebSocket(wsUrl(serverUrl, workspaceId, nodeId, token))
     this.socket.onmessage = (event) => this.receive(String(event.data))
-    this.socket.onerror = () => this.handlers.onError("Live editing disconnected.")
+    this.socket.onerror = () => {
+      if (!this.disposed) this.handlers.onError("Live editing disconnected.")
+    }
   }
 
   checkpoint() {
-    this.socket?.send(JSON.stringify({ type: "checkpoint" }))
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({ type: "checkpoint" }))
+    }
   }
 
   destroy() {
+    this.disposed = true
     this.socket?.close()
     this.doc.destroy()
   }
 
   private receive(raw: string) {
+    if (this.disposed) return
     const message = JSON.parse(raw) as CollabServerMessage
     if (message.type === "sync") {
       Y.applyUpdate(this.doc, fromBase64(message.update), "remote")
