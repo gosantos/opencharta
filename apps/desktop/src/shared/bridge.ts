@@ -20,6 +20,13 @@ export type SyncStatus = {
   changed: boolean
 }
 
+/** The document a message is sent about, so the agent sees what the user is looking at. */
+export type AgentContextFile = {
+  path: string
+  name: string
+  content: string
+}
+
 export type DesktopBridge = {
   getState: () => Promise<DesktopState>
   setSession: (patch: Partial<DesktopState>) => Promise<DesktopState>
@@ -32,7 +39,7 @@ export type DesktopBridge = {
   agentConnect: () => Promise<AgentState>
   agentDisconnect: () => Promise<AgentState>
   agentSetSettings: (patch: Partial<AgentSettings>) => Promise<AgentState>
-  agentSend: (text: string) => Promise<AgentState>
+  agentSend: (text: string, active?: AgentContextFile | null) => Promise<AgentState>
   agentInterrupt: () => Promise<AgentState>
   agentNewSession: () => Promise<AgentState>
   agentReplyPermission: (id: string, decision: AgentPermissionDecision) => Promise<AgentState>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import DOMPurify from "dompurify"
 import { marked } from "marked"
 import { roleAtLeast, type CollabPeer, type Member, type RevisionSummary, type Role, type User, type Workspace, type WorkspaceNode } from "@opencharta/shared"
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { SyncStatus } from "../../../shared/bridge"
+import type { AgentContextFile, SyncStatus } from "../../../shared/bridge"
 import { AgentPanel } from "../components/AgentPanel"
 import { MarkdownEditor } from "../components/MarkdownEditor"
 import { Api, ApiError } from "../lib/api"
@@ -52,6 +52,16 @@ export function EditorScreen({
   const liveRef = useRef<LiveDoc | null>(null)
   const canEdit = roleAtLeast(workspace.role, "editor")
   const selected = nodes.find((node) => node.id === selectedId && node.kind === "file") ?? null
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+
+  // What the agent should see: the open document and its live contents.
+  const getActiveContext = useCallback((): AgentContextFile | null => {
+    const node = selectedRef.current
+    const doc = liveRef.current
+    if (!node || !doc) return null
+    return { path: node.path, name: node.name, content: doc.isReady ? doc.text.toString() : "" }
+  }, [])
 
   async function refresh() {
     try {
@@ -86,7 +96,7 @@ export function EditorScreen({
   }, [selectedId])
 
   return (
-    <div className="flex h-full bg-white text-black">
+    <div className="relative flex h-full bg-white text-black">
       <aside className="flex w-[240px] shrink-0 flex-col border-r border-border">
         <div className="drag flex h-14 items-end px-4 pb-3 pl-20">
           <button type="button" className="no-drag text-left" onClick={() => void onBack()}>
@@ -175,11 +185,15 @@ export function EditorScreen({
         </div>
       </section>
       {agentOpen ? (
-        <AgentPanel
-          syncRoot={sync.root}
-          onClose={() => setAgentOpen(false)}
-          onFilesChanged={() => void refresh()}
-        />
+        <div className="absolute top-14 right-0 bottom-0 z-20 shadow-[-12px_0_32px_-24px_rgba(0,0,0,0.45)]">
+          <AgentPanel
+            syncRoot={sync.root}
+            activeDoc={selected ? { path: selected.path, name: selected.name } : null}
+            getActiveContext={getActiveContext}
+            onClose={() => setAgentOpen(false)}
+            onFilesChanged={() => void refresh()}
+          />
+        </div>
       ) : null}
       <NameDialog
         open={creating !== null}

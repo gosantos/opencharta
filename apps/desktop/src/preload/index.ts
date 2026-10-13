@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type { AgentPermissionDecision, AgentSettings, AgentState, DocExternalChange } from "@opencharta/shared"
-import type { DesktopBridge, DesktopState, SyncStatus } from "../shared/bridge"
+import type { AgentContextFile, DesktopBridge, DesktopState, SyncStatus } from "../shared/bridge"
 
 const bridge: DesktopBridge = {
   getState: () => ipcRenderer.invoke("state:get"),
@@ -18,7 +18,8 @@ const bridge: DesktopBridge = {
   agentConnect: () => ipcRenderer.invoke("agent:connect"),
   agentDisconnect: () => ipcRenderer.invoke("agent:disconnect"),
   agentSetSettings: (patch: Partial<AgentSettings>) => ipcRenderer.invoke("agent:settings", patch),
-  agentSend: (text: string) => ipcRenderer.invoke("agent:send", text),
+  agentSend: (text: string, active?: AgentContextFile | null) =>
+    ipcRenderer.invoke("agent:send", text, active ?? null),
   agentInterrupt: () => ipcRenderer.invoke("agent:interrupt"),
   agentNewSession: () => ipcRenderer.invoke("agent:new"),
   agentReplyPermission: (id: string, decision: AgentPermissionDecision) =>

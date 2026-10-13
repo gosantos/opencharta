@@ -32,6 +32,10 @@ export class LiveDoc {
     }
   }
 
+  get isReady() {
+    return this.ready
+  }
+
   checkpoint() {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({ type: "checkpoint" }))

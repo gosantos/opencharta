@@ -48,6 +48,8 @@ The app has an Agent panel that connects to an OpenCode server on the same Mac. 
 
 The agent works in the synced folder, so it acts on real `.md` files. Files the agent creates appear in the tree. Edits to a document that is open are applied as a live collaborative change, so nobody's typing is overwritten and both sides merge.
 
+The document you have open is part of every message. Its current contents are attached to the prompt, and the file on disk is brought up to date first, so the agent's own tools read the same text you see. That makes "make this shorter" or "fix the grammar" work without naming the file. Use the chip above the box to send a message without the document.
+
 Connection:
 
 - **Find the server automatically** (default): OpenCharta reads the running server's registration file from `$XDG_STATE_HOME/opencode/service.json` (usually `~/.local/state/opencode/service.json`) and authenticates with its password.

@@ -10,10 +10,16 @@ import type {
   AgentState,
   AgentStatus,
 } from "@opencharta/shared"
+import type { AgentContextFile } from "../shared/bridge"
 
 type Endpoint = { url: string; password: string }
 
 type RawEvent = { type: string; data: Record<string, any> }
+
+const INLINE_ATTACHMENT_LIMIT = 200_000
+
+/** Standing instruction key that names the document the user is looking at. */
+const ACTIVE_DOCUMENT_KEY = "opencharta.active-document"
 
 export type AgentSessionRef = { id: string; directory: string }
 
@@ -128,7 +134,7 @@ export class AgentManager {
     return this.state()
   }
 
-  async send(text: string): Promise<AgentState> {
+  async send(text: string, active?: AgentContextFile): Promise<AgentState> {
     const trimmed = text.trim()
     if (!trimmed) return this.state()
     if (this.status.state !== "ready") {
@@ -139,9 +145,20 @@ export class AgentManager {
     }
     await this.ensureSession()
     if (!this.session) throw new AgentError(0, "Couldn't open an agent session.")
+    await this.attachContext(active)
+    const body: Record<string, unknown> = { text: trimmed }
+    if (active && active.content.length > 0 && active.content.length <= INLINE_ATTACHMENT_LIMIT) {
+      body.files = [
+        {
+          uri: `data:text/markdown;base64,${Buffer.from(active.content, "utf8").toString("base64")}`,
+          name: active.name || active.path,
+          description: "The Markdown document the user is looking at in the OpenCharta editor.",
+        },
+      ]
+    }
     const result = await this.call<{ data: { id?: string; time?: { created?: number } } }>(
       `/api/session/${this.session.id}/prompt`,
-      { method: "POST", body: JSON.stringify({ text: trimmed }) },
+      { method: "POST", body: JSON.stringify(body) },
     )
     this.messages = [
       ...this.messages,
@@ -155,6 +172,32 @@ export class AgentManager {
     this.running = true
     this.publish()
     return this.state()
+  }
+
+  /**
+   * Keep a standing instruction on the session that names the file the user is
+   * looking at, so "make this shorter" resolves without them spelling it out.
+   */
+  private async attachContext(active?: AgentContextFile) {
+    if (!this.session) return
+    const path = `/api/experimental/session/${this.session.id}/instructions/entries/${ACTIVE_DOCUMENT_KEY}`
+    try {
+      if (active) {
+        await this.call(path, {
+          method: "PUT",
+          body: JSON.stringify({
+            value: {
+              path: active.path,
+              note: 'The user is looking at this file in the OpenCharta editor. When they say "this", "it", or "the document" without naming a file, they mean this one. Its current contents are attached to their message.',
+            },
+          }),
+        })
+      } else {
+        await this.call(path, { method: "DELETE" })
+      }
+    } catch {
+      // Standing context is best effort; the attachment still carries the file.
+    }
   }
 
   async interrupt(): Promise<AgentState> {

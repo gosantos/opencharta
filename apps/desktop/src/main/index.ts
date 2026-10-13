@@ -3,7 +3,7 @@ import { readFileSync, rmSync, watch, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { app, BrowserWindow, Menu, dialog, ipcMain } from "electron"
 import type { AgentPermissionDecision, AgentSettings, AgentState, DocExternalChange } from "@opencharta/shared"
-import type { DesktopState, SyncStatus } from "../shared/bridge"
+import type { AgentContextFile, DesktopState, SyncStatus } from "../shared/bridge"
 import { AgentManager, type AgentSessionRef } from "./agent"
 import { loadState, saveState } from "./state"
 import { syncFolder } from "./sync"
@@ -88,6 +88,24 @@ function announceLive() {
   liveSent = digest
   const change: DocExternalChange = { nodeId: doc.nodeId, path: doc.path, content }
   send("doc:external", change)
+}
+
+/**
+ * The agent works on real files and its tools read the folder. Before it runs,
+ * make the open document's file match the editor buffer, so "this file" means
+ * what the user sees rather than the last synced copy. The open node is kept
+ * out of the folder sync, so this write is not treated as a change to push.
+ */
+function flushActiveDocument(active: AgentContextFile | null) {
+  if (!active || !state.syncRoot) return
+  try {
+    writeFileSync(join(state.syncRoot, active.path), active.content)
+    const digest = hash(active.content)
+    liveBaseline = digest
+    liveSent = digest
+  } catch {
+    // If the file cannot be written, the attached content still carries it.
+  }
 }
 
 async function syncNow(): Promise<SyncStatus> {
@@ -270,7 +288,10 @@ app.whenReady().then(() => {
     saveState(stateFile(), state)
     return agent!.setSettings(patch)
   })
-  ipcMain.handle("agent:send", (_event, text: string) => agent!.send(text))
+  ipcMain.handle("agent:send", async (_event, text: string, active: AgentContextFile | null) => {
+    flushActiveDocument(active)
+    return agent!.send(text, active ?? undefined)
+  })
   ipcMain.handle("agent:interrupt", () => agent!.interrupt())
   ipcMain.handle("agent:new", () => agent!.newSession())
   ipcMain.handle("agent:permission", (_event, id: string, decision: AgentPermissionDecision) =>

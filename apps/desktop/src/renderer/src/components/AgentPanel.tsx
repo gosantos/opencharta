@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import DOMPurify from "dompurify"
 import { marked } from "marked"
 import type { AgentMessage, AgentPart, AgentPermission, AgentSettings, AgentState } from "@opencharta/shared"
+import type { AgentContextFile } from "../../../shared/bridge"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,10 +25,14 @@ const emptyState: AgentState = {
 
 export function AgentPanel({
   syncRoot,
+  activeDoc,
+  getActiveContext,
   onClose,
   onFilesChanged,
 }: {
   syncRoot: string | null
+  activeDoc: { path: string; name: string } | null
+  getActiveContext: () => AgentContextFile | null
   onClose: () => void
   onFilesChanged: () => void
 }) {
@@ -35,6 +40,7 @@ export function AgentPanel({
   const [text, setText] = useState("")
   const [error, setError] = useState("")
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [attachFile, setAttachFile] = useState(true)
   const scroll = useRef<HTMLDivElement>(null)
   const wasRunning = useRef(false)
 
@@ -68,8 +74,9 @@ export function AgentPanel({
   async function send() {
     const value = text.trim()
     if (!value || state.running) return
+    const active = attachFile ? getActiveContext() : null
     setText("")
-    await run(() => window.opencharta.agentSend(value))
+    await run(() => window.opencharta.agentSend(value, active))
   }
 
   return (
@@ -117,7 +124,11 @@ export function AgentPanel({
         ) : state.messages.length === 0 ? (
           <Notice
             title="Ask the agent to edit your files"
-            body={`It works in ${syncRoot}. Try “Add a short intro paragraph to the welcome file.”`}
+            body={
+              activeDoc
+                ? `${activeDoc.name} is attached to your messages, so “make this shorter” just works. The agent edits files in ${syncRoot}.`
+                : `It edits files in ${syncRoot}. Open a document to include it in your messages automatically.`
+            }
           />
         ) : (
           <div className="flex flex-col gap-5">
@@ -148,6 +159,24 @@ export function AgentPanel({
       {syncRoot ? (
         <div className="border-t border-border p-3">
           {error ? <p className="mb-2 text-xs">{error}</p> : null}
+          {activeDoc ? (
+            <button
+              type="button"
+              onClick={() => setAttachFile((value) => !value)}
+              title={
+                attachFile
+                  ? "The open document is attached to your message. Click to send without it."
+                  : "The open document is not attached. Click to include it."
+              }
+              className={cn(
+                "mb-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs",
+                attachFile ? "border-black text-black" : "border-border text-muted-foreground",
+              )}
+            >
+              <span className={cn("size-1.5 shrink-0 rounded-full", attachFile ? "bg-black" : "bg-border")} />
+              <span className="truncate">{activeDoc.name}</span>
+            </button>
+          ) : null}
           <textarea
             className="h-20 w-full resize-none rounded-md border border-input bg-white p-2 text-sm outline-none focus-visible:border-ring disabled:opacity-50"
             placeholder={connected ? "Tell the agent what to change…" : "Connect to start chatting"}
