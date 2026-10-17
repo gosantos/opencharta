@@ -5,9 +5,20 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly fields: Record<string, string> = {},
   ) {
     super(message)
   }
+}
+
+/** Takes the first message per field from a zod `flatten()` result sent by the server. */
+function fieldErrors(details: unknown): Record<string, string> {
+  const raw = (details as { fieldErrors?: Record<string, string[] | undefined> } | undefined)?.fieldErrors
+  const fields: Record<string, string> = {}
+  for (const [field, messages] of Object.entries(raw ?? {})) {
+    if (messages?.[0]) fields[field] = messages[0]
+  }
+  return fields
 }
 
 export class Api {
@@ -99,10 +110,15 @@ export class Api {
       throw new ApiError(0, "offline", "Can't reach the server.")
     }
     const payload = (await response.json().catch(() => null)) as {
-      error?: { code: string; message: string }
+      error?: { code: string; message: string; details?: unknown }
     } | null
     if (!response.ok) {
-      throw new ApiError(response.status, payload?.error?.code ?? "http", payload?.error?.message ?? "Request failed.")
+      throw new ApiError(
+        response.status,
+        payload?.error?.code ?? "http",
+        payload?.error?.message ?? "Request failed.",
+        fieldErrors(payload?.error?.details),
+      )
     }
     return payload as T
   }

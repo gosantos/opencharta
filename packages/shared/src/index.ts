@@ -87,15 +87,19 @@ export type ApiErrorBody = {
   }
 }
 
+const emailField = z
+  .email("Enter a full email address, like name@example.com.")
+  .transform((value) => value.toLowerCase())
+
 export const registerBody = z.object({
-  email: z.email().transform((value) => value.toLowerCase()),
-  name: z.string().trim().min(1).max(80),
-  password: z.string().min(8).max(200),
+  email: emailField,
+  name: z.string().trim().min(1, "Enter your name.").max(80, "Use 80 characters or fewer."),
+  password: z.string().min(8, "Use at least 8 characters.").max(200, "Use 200 characters or fewer."),
 })
 
 export const loginBody = z.object({
-  email: z.email().transform((value) => value.toLowerCase()),
-  password: z.string().min(1).max(200),
+  email: emailField,
+  password: z.string().min(1, "Enter your password.").max(200, "Use 200 characters or fewer."),
 })
 
 export const createWorkspaceBody = z.object({
