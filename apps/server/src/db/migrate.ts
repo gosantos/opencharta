@@ -100,10 +100,28 @@ CREATE TABLE IF NOT EXISTS share_links (
 CREATE INDEX IF NOT EXISTS share_links_node_idx ON share_links(node_id);
 `
 
+const comments = `
+CREATE TABLE IF NOT EXISTS comments (
+  id TEXT PRIMARY KEY NOT NULL,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+  node_id TEXT NOT NULL REFERENCES nodes(id),
+  parent_id TEXT,
+  author_id TEXT NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL,
+  quote TEXT NOT NULL DEFAULT '',
+  resolved_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS comments_node_idx ON comments(node_id);
+`
+
 const migrations: Array<[string, string]> = [
   ["0001_init", initial],
   ["0002_node_shares", nodeShares],
   ["0003_share_links", shareLinks],
+  ["0004_comments", comments],
 ]
 
 export function migrate(sqlite: Database.Database) {

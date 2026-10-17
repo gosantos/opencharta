@@ -130,3 +130,26 @@ export const shareLinks = sqliteTable(
   },
   (table) => [index("share_links_node_idx").on(table.nodeId)],
 )
+
+export const comments = sqliteTable(
+  "comments",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    nodeId: text("node_id")
+      .notNull()
+      .references(() => nodes.id),
+    parentId: text("parent_id"),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    body: text("body").notNull(),
+    quote: text("quote").notNull().default(""),
+    resolvedAt: integer("resolved_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("comments_node_idx").on(table.nodeId)],
+)

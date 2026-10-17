@@ -9,6 +9,8 @@ import {
   registerBody,
   shareNodeBody,
   createLinkBody,
+  createCommentBody,
+  patchCommentBody,
 } from "@opencharta/shared"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
@@ -152,6 +154,37 @@ export function createApp(db: Db, collab = new CollabHub(new WorkspaceStore(db))
   app.delete("/workspaces/:workspaceId/nodes/:nodeId/shares/:userId", (c) => {
     const user = requireUser(c, store)
     store.unshareNode(user.id, c.req.param("workspaceId"), c.req.param("nodeId"), c.req.param("userId"))
+    return c.json({ ok: true })
+  })
+
+  app.get("/workspaces/:workspaceId/nodes/:nodeId/comments", (c) => {
+    const user = requireUser(c, store)
+    return c.json({ comments: store.listComments(user.id, c.req.param("workspaceId"), c.req.param("nodeId")) })
+  })
+
+  app.post("/workspaces/:workspaceId/nodes/:nodeId/comments", async (c) => {
+    const user = requireUser(c, store)
+    const body = parse(createCommentBody, await c.req.json().catch(() => null))
+    const nodeId = c.req.param("nodeId")
+    const comment = store.addComment(user.id, c.req.param("workspaceId"), nodeId, body)
+    collab.notifyComments(nodeId)
+    return c.json({ comment }, 201)
+  })
+
+  app.patch("/workspaces/:workspaceId/nodes/:nodeId/comments/:commentId", async (c) => {
+    const user = requireUser(c, store)
+    const body = parse(patchCommentBody, await c.req.json().catch(() => null))
+    const nodeId = c.req.param("nodeId")
+    const comment = store.updateComment(user.id, c.req.param("workspaceId"), nodeId, c.req.param("commentId"), body)
+    collab.notifyComments(nodeId)
+    return c.json({ comment })
+  })
+
+  app.delete("/workspaces/:workspaceId/nodes/:nodeId/comments/:commentId", (c) => {
+    const user = requireUser(c, store)
+    const nodeId = c.req.param("nodeId")
+    store.deleteComment(user.id, c.req.param("workspaceId"), nodeId, c.req.param("commentId"))
+    collab.notifyComments(nodeId)
     return c.json({ ok: true })
   })
 

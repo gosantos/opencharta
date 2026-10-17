@@ -144,6 +144,32 @@ export function linkToken(input: string) {
   return /^[A-Za-z0-9_-]{20,}$/.test(trimmed) ? trimmed : null
 }
 
+export type Comment = {
+  id: string
+  nodeId: string
+  /** Null for the first comment in a thread, otherwise the thread it replies to. */
+  parentId: string | null
+  authorId: string
+  authorName: string
+  body: string
+  /** The text the thread is about, copied when it was started. Empty for a comment on the whole file. */
+  quote: string
+  resolved: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export const createCommentBody = z.object({
+  body: z.string().trim().min(1).max(10_000),
+  quote: z.string().max(2_000).optional(),
+  parentId: z.string().nullable().optional(),
+})
+
+export const patchCommentBody = z.object({
+  body: z.string().trim().min(1).max(10_000).optional(),
+  resolved: z.boolean().optional(),
+})
+
 export const shareNodeBody = z.object({
   email: z.email().transform((value) => value.toLowerCase()),
   role: z.enum(SHARE_ROLES),
@@ -537,6 +563,7 @@ export type CollabServerMessage =
   | { type: "presence"; peers: CollabPeer[] }
   | { type: "checkpoint"; revision: number }
   | { type: "error"; message: string }
+  | { type: "comments" }
 
 export function wsUrl(serverUrl: string, workspaceId: string, nodeId: string, token: string) {
   const url = new URL(serverUrl)

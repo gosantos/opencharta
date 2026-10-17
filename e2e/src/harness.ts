@@ -98,6 +98,7 @@ export class Client {
     const peers: string[][] = []
     const errors: string[] = []
     const revisions: number[] = []
+    const notices = { comments: 0 }
     let ready: () => void = () => {}
     const opened = new Promise<void>((resolve) => (ready = resolve))
     const doc = new LiveDoc(this.url, workspaceId, nodeId, this.token, {
@@ -105,9 +106,12 @@ export class Client {
       onPeers: (next) => peers.push(next.map((peer) => peer.name)),
       onRevision: (revision) => revisions.push(revision),
       onError: (message) => errors.push(message),
+      onComments: () => {
+        notices.comments += 1
+      },
     })
     await Promise.race([opened, waitFor(() => errors.length > 0, "the file to open")])
-    return { doc, peers, errors, revisions }
+    return { doc, peers, errors, revisions, notices }
   }
 }
 

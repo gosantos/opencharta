@@ -18,6 +18,7 @@ export class LiveDoc {
       onPeers: (peers: CollabPeer[]) => void
       onRevision: (revision: number) => void
       onError: (message: string) => void
+      onComments?: () => void
     },
   ) {
     this.text = this.doc.getText("content")
@@ -62,6 +63,8 @@ export class LiveDoc {
       this.handlers.onPeers(message.peers)
     } else if (message.type === "checkpoint") {
       this.handlers.onRevision(message.revision)
+    } else if (message.type === "comments") {
+      this.handlers.onComments?.()
     } else if (message.type === "error") {
       this.handlers.onError(message.message)
     }

@@ -6,6 +6,7 @@ import {
   validateNodeName,
   type ChangeOp,
   type ChangeRecord,
+  type Comment,
   type ConflictDetails,
   type Member,
   type NodeKind,
@@ -18,7 +19,7 @@ import {
   type WorkspaceNode,
 } from "@opencharta/shared"
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm"
-import { changes, memberships, nodeShares, nodes, shareLinks, revisions, sessions, users, workspaces } from "./db/schema"
+import { changes, comments, memberships, nodeShares, nodes, shareLinks, revisions, sessions, users, workspaces } from "./db/schema"
 import type { Db } from "./db/client"
 import { AppError } from "./lib/errors"
 import { hashToken, newId, newToken, sha256, verifyPassword } from "./lib/crypto"
@@ -145,6 +146,7 @@ export class WorkspaceStore {
       for (const id of ids) tx.delete(revisions).where(eq(revisions.nodeId, id)).run()
       tx.delete(nodeShares).where(eq(nodeShares.workspaceId, workspaceId)).run()
       tx.delete(shareLinks).where(eq(shareLinks.workspaceId, workspaceId)).run()
+      tx.delete(comments).where(eq(comments.workspaceId, workspaceId)).run()
       tx.delete(changes).where(eq(changes.workspaceId, workspaceId)).run()
       tx.delete(nodes).where(eq(nodes.workspaceId, workspaceId)).run()
       tx.delete(memberships).where(eq(memberships.workspaceId, workspaceId)).run()
@@ -345,6 +347,115 @@ export class WorkspaceStore {
       workspace: this.getWorkspace(userId, link.workspaceId),
       node: this.nodeById(userId, link.workspaceId, link.nodeId),
     }
+  }
+
+  listComments(userId: string, workspaceId: string, nodeId: string): Comment[] {
+    this.authorize(userId, workspaceId, nodeId, "viewer")
+    this.mustFile(this.db, workspaceId, nodeId)
+    return this.db
+      .select({ comment: comments, author: users.name })
+      .from(comments)
+      .leftJoin(users, eq(users.id, comments.authorId))
+      .where(and(eq(comments.nodeId, nodeId), eq(comments.workspaceId, workspaceId)))
+      .orderBy(comments.createdAt)
+      .all()
+      .map((row) => toComment(row.comment, row.author))
+  }
+
+  /** Anyone who can read a file can comment on it. */
+  addComment(
+    userId: string,
+    workspaceId: string,
+    nodeId: string,
+    input: { body: string; quote?: string; parentId?: string | null },
+  ) {
+    this.authorize(userId, workspaceId, nodeId, "viewer")
+    this.mustFile(this.db, workspaceId, nodeId)
+    let quote = input.quote ?? ""
+    if (input.parentId) {
+      const parent = this.mustComment(workspaceId, nodeId, input.parentId)
+      if (parent.parentId) throw new AppError(400, "invalid", "Reply to the first comment in the thread.")
+      quote = ""
+      this.db.update(comments).set({ resolvedAt: null }).where(eq(comments.id, parent.id)).run()
+    }
+    const now = Date.now()
+    const id = newId()
+    this.db
+      .insert(comments)
+      .values({
+        id,
+        workspaceId,
+        nodeId,
+        parentId: input.parentId ?? null,
+        authorId: userId,
+        body: input.body,
+        quote,
+        resolvedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+    return this.commentById(id)
+  }
+
+  /** Authors edit their own words. Resolving a thread takes the author or someone who can edit the file. */
+  updateComment(
+    userId: string,
+    workspaceId: string,
+    nodeId: string,
+    commentId: string,
+    input: { body?: string; resolved?: boolean },
+  ) {
+    const role = this.authorize(userId, workspaceId, nodeId, "viewer")
+    const comment = this.mustComment(workspaceId, nodeId, commentId)
+    const isAuthor = comment.authorId === userId
+    if (input.body !== undefined && !isAuthor) throw forbidden()
+    if (input.resolved !== undefined) {
+      if (comment.parentId) throw new AppError(400, "invalid", "Resolve the thread, not a reply.")
+      if (!isAuthor && !roleAtLeast(role, "editor")) throw forbidden()
+    }
+    const now = Date.now()
+    this.db
+      .update(comments)
+      .set({
+        ...(input.body !== undefined ? { body: input.body, updatedAt: now } : {}),
+        ...(input.resolved !== undefined ? { resolvedAt: input.resolved ? now : null } : {}),
+      })
+      .where(eq(comments.id, commentId))
+      .run()
+    return this.commentById(commentId)
+  }
+
+  /** Authors can delete their comments, and editors can delete any. Deleting a thread removes its replies. */
+  deleteComment(userId: string, workspaceId: string, nodeId: string, commentId: string) {
+    const role = this.authorize(userId, workspaceId, nodeId, "viewer")
+    const comment = this.mustComment(workspaceId, nodeId, commentId)
+    if (comment.authorId !== userId && !roleAtLeast(role, "editor")) throw forbidden()
+    this.db.transaction((tx) => {
+      tx.delete(comments).where(eq(comments.parentId, commentId)).run()
+      tx.delete(comments).where(eq(comments.id, commentId)).run()
+    })
+  }
+
+  private mustComment(workspaceId: string, nodeId: string, commentId: string) {
+    const comment = this.db
+      .select()
+      .from(comments)
+      .where(and(eq(comments.id, commentId), eq(comments.nodeId, nodeId), eq(comments.workspaceId, workspaceId)))
+      .get()
+    if (!comment) throw new AppError(404, "not_found", "That comment is gone.")
+    return comment
+  }
+
+  private commentById(id: string) {
+    const row = this.db
+      .select({ comment: comments, author: users.name })
+      .from(comments)
+      .leftJoin(users, eq(users.id, comments.authorId))
+      .where(eq(comments.id, id))
+      .get()
+    if (!row) throw new AppError(404, "not_found", "That comment is gone.")
+    return toComment(row.comment, row.author)
   }
 
   unshareNode(actorId: string, workspaceId: string, nodeId: string, userId: string) {
@@ -966,6 +1077,21 @@ function nodePayload(row: NodeRow, path: string) {
     path,
     revision: row.revision,
     contentHash: row.contentHash,
+  }
+}
+
+function toComment(row: typeof comments.$inferSelect, authorName: string | null): Comment {
+  return {
+    id: row.id,
+    nodeId: row.nodeId,
+    parentId: row.parentId,
+    authorId: row.authorId,
+    authorName: authorName ?? "Unknown",
+    body: row.body,
+    quote: row.quote,
+    resolved: row.resolvedAt !== null,
+    createdAt: iso(row.createdAt),
+    updatedAt: iso(row.updatedAt),
   }
 }
 

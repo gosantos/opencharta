@@ -101,6 +101,12 @@ export class CollabHub {
     this.broadcast(room, { type: "presence", peers: this.peers(room) })
   }
 
+  /** Tells everyone with the file open that its comments changed. */
+  notifyComments(nodeId: string) {
+    const room = this.rooms.get(nodeId)
+    if (room) this.broadcast(room, { type: "comments" })
+  }
+
   /** Saves every open document as a version and forgets all connections. Used on shutdown. */
   closeAll() {
     for (const room of this.rooms.values()) {
