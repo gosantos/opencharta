@@ -52,7 +52,9 @@ export function WorkspaceScreen({
                 onClick={() => void onOpen(workspace)}
               >
                 <span>{workspace.name}</span>
-                <span className="text-sm text-muted-foreground">{workspace.role}</span>
+                <span className="text-sm text-muted-foreground">
+                  {workspace.shared ? `shared with you · ${workspace.role}` : workspace.role}
+                </span>
               </button>
             </li>
           ))

@@ -40,7 +40,6 @@ Teams that write in Markdown and want to share it the way they'd share a Google 
 
 ## Not yet
 
-- A sharing dialog in the app (sharing works through the API today)
 - Sharing by link
 - Comments and suggestions
 - Apps for platforms other than Mac, or a web editor

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import DOMPurify from "dompurify"
 import { marked } from "marked"
-import { roleAtLeast, type CollabPeer, type Member, type RevisionSummary, type Role, type User, type Workspace, type WorkspaceNode } from "@opencharta/shared"
+import { roleAtLeast, type CollabPeer, type Member, type NodeShare, type RevisionSummary, type Role, type ShareRole, type User, type Workspace, type WorkspaceNode } from "@opencharta/shared"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -47,11 +47,19 @@ export function EditorScreen({
   const [renaming, setRenaming] = useState<WorkspaceNode | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [membersOpen, setMembersOpen] = useState(false)
+  const [sharing, setSharing] = useState<WorkspaceNode | null>(null)
   const [mode, setMode] = useState<"edit" | "view">("edit")
   const [agentOpen, setAgentOpen] = useState(true)
   const liveRef = useRef<LiveDoc | null>(null)
-  const canEdit = roleAtLeast(workspace.role, "editor")
   const selected = nodes.find((node) => node.id === selectedId && node.kind === "file") ?? null
+  const canEdit = canEditNode(selected)
+  // New files go next to the selection, so creating is allowed when that folder is editable.
+  const picked = nodes.find((node) => node.id === selectedId)
+  const createParentId = picked?.kind === "folder" ? picked.id : (picked?.parentId ?? null)
+  const createParent = nodes.find((node) => node.id === createParentId) ?? null
+  const canCreate = createParent
+    ? canEditNode(createParent)
+    : !workspace.shared && roleAtLeast(workspace.role, "editor")
   const selectedRef = useRef(selected)
   selectedRef.current = selected
 
@@ -116,10 +124,10 @@ export function EditorScreen({
               if (selectedId === node.id) setSelectedId(null)
               await refresh()
             }}
-            canEdit={canEdit}
+            onShare={setSharing}
           />
         </nav>
-        {canEdit ? (
+        {canCreate ? (
           <div className="flex gap-2 border-t border-border p-3">
             <Button variant="outline" size="sm" onClick={() => setCreating("file")}>
               New file
@@ -143,9 +151,16 @@ export function EditorScreen({
             <Button variant="ghost" size="sm" onClick={onSyncNow}>
               Sync
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setMembersOpen(true)}>
-              People
-            </Button>
+            {workspace.shared ? null : (
+              <Button variant="ghost" size="sm" onClick={() => setMembersOpen(true)}>
+                People
+              </Button>
+            )}
+            {selected && canEdit ? (
+              <Button variant="ghost" size="sm" onClick={() => setSharing(selected)}>
+                Share
+              </Button>
+            ) : null}
             {selected && canEdit ? (
               <Button variant="ghost" size="sm" onClick={() => setMode(mode === "edit" ? "view" : "edit")}>
                 {mode === "edit" ? "View" : "Edit"}
@@ -202,10 +217,8 @@ export function EditorScreen({
           if (!open) setCreating(null)
         }}
         onSubmit={async (name) => {
-          const parent = nodes.find((node) => node.id === selectedId)
-          const parentId = parent?.kind === "folder" ? parent.id : (parent?.parentId ?? null)
           const created = await api.createNode(workspace.id, {
-            parentId,
+            parentId: createParentId,
             kind: creating === "folder" ? "folder" : "file",
             name,
           })
@@ -238,6 +251,15 @@ export function EditorScreen({
           canEdit={canEdit}
         />
       ) : null}
+      <ShareDialog
+        node={sharing}
+        onOpenChange={(open) => {
+          if (!open) setSharing(null)
+        }}
+        api={api}
+        workspaceId={workspace.id}
+        userId={user.id}
+      />
       <MembersDialog
         open={membersOpen}
         onOpenChange={setMembersOpen}
@@ -256,7 +278,7 @@ function Tree({
   onSelect,
   onRename,
   onDelete,
-  canEdit,
+  onShare,
   depth = 0,
 }: {
   nodes: WorkspaceNode[]
@@ -265,7 +287,7 @@ function Tree({
   onSelect: (id: string) => void
   onRename: (node: WorkspaceNode) => void
   onDelete: (node: WorkspaceNode) => void
-  canEdit: boolean
+  onShare: (node: WorkspaceNode) => void
   depth?: number
 }) {
   const children = nodes
@@ -288,8 +310,11 @@ function Tree({
             >
               {node.kind === "folder" ? node.name : node.name.replace(/\.md$/, "")}
             </button>
-            {canEdit ? (
+            {canEditNode(node) ? (
               <span className="hidden gap-1 group-hover:flex">
+                <button type="button" className="text-xs text-muted-foreground" onClick={() => onShare(node)}>
+                  Share
+                </button>
                 <button type="button" className="text-xs text-muted-foreground" onClick={() => onRename(node)}>
                   Rename
                 </button>
@@ -307,7 +332,7 @@ function Tree({
               onSelect={onSelect}
               onRename={onRename}
               onDelete={onDelete}
-              canEdit={canEdit}
+              onShare={onShare}
               depth={depth + 1}
             />
           ) : null}
@@ -380,6 +405,117 @@ function Document({
         <p className="text-sm text-muted-foreground">Opening…</p>
       )}
       </div>
+  )
+}
+
+function canEditNode(node: WorkspaceNode | null) {
+  return !!node?.role && roleAtLeast(node.role, "editor")
+}
+
+function ShareDialog({
+  node,
+  onOpenChange,
+  api,
+  workspaceId,
+  userId,
+}: {
+  node: WorkspaceNode | null
+  onOpenChange: (open: boolean) => void
+  api: Api
+  workspaceId: string
+  userId: string
+}) {
+  const [shares, setShares] = useState<NodeShare[]>([])
+  const [email, setEmail] = useState("")
+  const [role, setRole] = useState<ShareRole>("editor")
+  const [error, setError] = useState("")
+  const nodeId = node?.id ?? null
+
+  useEffect(() => {
+    setShares([])
+    setError("")
+    if (!nodeId) return
+    void api
+      .shares(workspaceId, nodeId)
+      .then((result) => setShares(result.shares))
+      .catch((caught) => setError(caught instanceof ApiError ? caught.message : "Could not load who has access."))
+  }, [nodeId, api, workspaceId])
+
+  const canGrantEditor = !!node?.role && roleAtLeast(node.role, "editor")
+
+  return (
+    <Dialog open={node !== null} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Share {node?.kind === "folder" ? node.name : node?.name.replace(/\.md$/, "")}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          {node?.kind === "folder"
+            ? "People you add can open everything in this folder, even if they are not in the workspace."
+            : "People you add can open this file, even if they are not in the workspace."}
+        </p>
+        {shares.length ? (
+          <ul className="divide-y divide-border">
+            {shares.map((share) => (
+              <li key={share.userId} className="flex items-baseline justify-between gap-3 py-2 text-sm">
+                <span className="min-w-0 truncate">
+                  {share.name}
+                  <span className="ml-2 text-muted-foreground">{share.email}</span>
+                </span>
+                <span className="flex shrink-0 items-baseline gap-3">
+                  <span>{share.role}</span>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground"
+                    onClick={async () => {
+                      if (!nodeId) return
+                      try {
+                        await api.unshare(workspaceId, nodeId, share.userId)
+                        setShares((current) => current.filter((item) => item.userId !== share.userId))
+                      } catch (caught) {
+                        setError(caught instanceof ApiError ? caught.message : "Could not remove access.")
+                      }
+                    }}
+                  >
+                    {share.userId === userId ? "Leave" : "Remove"}
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <form
+          className="grid gap-3"
+          onSubmit={async (event) => {
+            event.preventDefault()
+            if (!nodeId) return
+            setError("")
+            try {
+              const result = await api.share(workspaceId, nodeId, email, role)
+              setShares(result.shares)
+              setEmail("")
+            } catch (caught) {
+              setError(caught instanceof ApiError ? caught.message : "Could not share with that person.")
+            }
+          }}
+        >
+          <Label>Share with someone who has an account</Label>
+          <div className="flex gap-2">
+            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            <select
+              className="h-9 rounded-md border border-input bg-white px-2 text-sm"
+              value={role}
+              onChange={(event) => setRole(event.target.value as ShareRole)}
+            >
+              {canGrantEditor ? <option value="editor">Editor</option> : null}
+              <option value="viewer">Viewer</option>
+            </select>
+            <Button type="submit">Share</Button>
+          </div>
+          {error ? <p className="text-sm">{error}</p> : null}
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
