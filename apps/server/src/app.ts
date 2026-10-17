@@ -16,11 +16,13 @@ import { Hono } from "hono"
 import { cors } from "hono/cors"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { upgradeWebSocket } from "@hono/node-server"
+import type * as Y from "yjs"
 import { z } from "zod"
 import { CollabHub } from "./collab"
 import type { Db } from "./db/client"
 import { AppError } from "./lib/errors"
 import { hashPassword } from "./lib/crypto"
+import { replaceQuote } from "./lib/yjs"
 import { WorkspaceStore } from "./store"
 
 type Vars = { userId: string }
@@ -176,6 +178,20 @@ export function createApp(db: Db, collab = new CollabHub(new WorkspaceStore(db))
     const body = parse(patchCommentBody, await c.req.json().catch(() => null))
     const nodeId = c.req.param("nodeId")
     const comment = store.updateComment(user.id, c.req.param("workspaceId"), nodeId, c.req.param("commentId"), body)
+    collab.notifyComments(nodeId)
+    return c.json({ comment })
+  })
+
+  app.post("/workspaces/:workspaceId/nodes/:nodeId/comments/:commentId/accept", (c) => {
+    const user = requireUser(c, store)
+    const workspaceId = c.req.param("workspaceId")
+    const nodeId = c.req.param("nodeId")
+    const commentId = c.req.param("commentId")
+    const { quote, replacement } = store.suggestionToAccept(user.id, workspaceId, nodeId, commentId)
+    const change = (text: Y.Text) => replaceQuote(text, quote, replacement)
+    const applied = collab.editOpen(nodeId, user.id, change) ?? store.editStored(user.id, workspaceId, nodeId, change)
+    if (!applied) throw new AppError(409, "stale", "The suggested text changed, so this can't be applied.")
+    const comment = store.markAccepted(commentId)
     collab.notifyComments(nodeId)
     return c.json({ comment })
   })

@@ -101,6 +101,18 @@ export class CollabHub {
     this.broadcast(room, { type: "presence", peers: this.peers(room) })
   }
 
+  /** Edits an open document as the server, so every editor receives the change. False if nobody has it open. */
+  editOpen(nodeId: string, authorId: string, change: (text: Y.Text) => boolean): boolean | null {
+    const room = this.rooms.get(nodeId)
+    if (!room || room.conns.size === 0) return null
+    const changed = change(room.doc.getText("content"))
+    if (changed) {
+      room.lastAuthorId = authorId
+      this.checkpoint(room, authorId)
+    }
+    return changed
+  }
+
   /** Tells everyone with the file open that its comments changed. */
   notifyComments(nodeId: string) {
     const room = this.rooms.get(nodeId)

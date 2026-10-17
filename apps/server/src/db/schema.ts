@@ -148,6 +148,8 @@ export const comments = sqliteTable(
     body: text("body").notNull(),
     quote: text("quote").notNull().default(""),
     resolvedAt: integer("resolved_at"),
+    suggestion: text("suggestion"),
+    acceptedAt: integer("accepted_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },

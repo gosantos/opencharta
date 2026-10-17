@@ -24,6 +24,8 @@ export function CommentsPanel({
   const [comments, setComments] = useState<Comment[]>([])
   const [draft, setDraft] = useState("")
   const [quote, setQuote] = useState("")
+  const [suggesting, setSuggesting] = useState(false)
+  const [replacement, setReplacement] = useState("")
   const [showResolved, setShowResolved] = useState(false)
   const [error, setError] = useState("")
   const canModerate = !!role && roleAtLeast(role, "editor")
@@ -79,6 +81,7 @@ export function CommentsPanel({
             userId={userId}
             canModerate={canModerate}
             onReply={(body) => run(() => api.addComment(workspaceId, nodeId, { body, parentId: thread.id }))}
+            onAccept={() => run(() => api.acceptSuggestion(workspaceId, nodeId, thread.id))}
             onResolve={(resolved) => run(() => api.updateComment(workspaceId, nodeId, thread.id, { resolved }))}
             onDelete={(id) => run(() => api.deleteComment(workspaceId, nodeId, id))}
           />
@@ -90,9 +93,15 @@ export function CommentsPanel({
           event.preventDefault()
           if (!draft.trim()) return
           void run(async () => {
-            await api.addComment(workspaceId, nodeId, { body: draft, quote: quote || undefined })
+            await api.addComment(workspaceId, nodeId, {
+              body: draft,
+              quote: quote || undefined,
+              suggestion: suggesting && quote ? replacement : undefined,
+            })
             setDraft("")
             setQuote("")
+            setReplacement("")
+            setSuggesting(false)
           })
         }}
       >
@@ -101,6 +110,9 @@ export function CommentsPanel({
             <blockquote className="min-w-0 flex-1 truncate border-l-2 border-black pl-2 text-xs text-muted-foreground">
               {quote}
             </blockquote>
+            <button type="button" className="text-xs text-muted-foreground" onClick={() => setSuggesting(!suggesting)}>
+              {suggesting ? "Just comment" : "Suggest edit"}
+            </button>
             <button type="button" className="text-xs text-muted-foreground" onClick={() => setQuote("")}>
               Clear
             </button>
@@ -108,6 +120,14 @@ export function CommentsPanel({
         ) : (
           <p className="text-xs text-muted-foreground">Select text in the document to comment on it.</p>
         )}
+        {suggesting && quote ? (
+          <textarea
+            className="min-h-12 rounded-md border border-input p-2 text-sm"
+            value={replacement}
+            onChange={(event) => setReplacement(event.target.value)}
+            placeholder="Replace with"
+          />
+        ) : null}
         <textarea
           className="min-h-16 rounded-md border border-input p-2 text-sm"
           value={draft}
@@ -129,6 +149,7 @@ function Thread({
   userId,
   canModerate,
   onReply,
+  onAccept,
   onResolve,
   onDelete,
 }: {
@@ -137,6 +158,7 @@ function Thread({
   userId: string
   canModerate: boolean
   onReply: (body: string) => Promise<void>
+  onAccept: () => Promise<void>
   onResolve: (resolved: boolean) => Promise<void>
   onDelete: (id: string) => Promise<void>
 }) {
@@ -146,6 +168,20 @@ function Thread({
     <section className={`rounded-md border border-border p-3 text-sm ${thread.resolved ? "opacity-60" : ""}`}>
       {thread.quote ? (
         <blockquote className="mb-2 border-l-2 border-black pl-2 text-xs text-muted-foreground">{thread.quote}</blockquote>
+      ) : null}
+      {thread.suggestion !== null ? (
+        <div className="mb-2 flex items-baseline justify-between gap-2 text-xs">
+          <span className="min-w-0">
+            Suggests: <span className="whitespace-pre-wrap font-medium">{thread.suggestion || "(delete)"}</span>
+          </span>
+          {thread.accepted ? (
+            <span className="text-muted-foreground">Accepted</span>
+          ) : canModerate ? (
+            <button type="button" className="underline" onClick={() => void onAccept()}>
+              Accept
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {[thread, ...replies].map((comment) => (
         <div key={comment.id} className="mb-2">

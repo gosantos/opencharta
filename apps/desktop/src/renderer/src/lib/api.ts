@@ -84,7 +84,15 @@ export class Api {
     return this.get<{ comments: Comment[] }>(`/workspaces/${workspaceId}/nodes/${nodeId}/comments`)
   }
 
-  addComment(workspaceId: string, nodeId: string, body: { body: string; quote?: string; parentId?: string }) {
+  acceptSuggestion(workspaceId: string, nodeId: string, commentId: string) {
+    return this.send<{ comment: Comment }>(`/workspaces/${workspaceId}/nodes/${nodeId}/comments/${commentId}/accept`, "POST")
+  }
+
+  addComment(
+    workspaceId: string,
+    nodeId: string,
+    body: { body: string; quote?: string; parentId?: string; suggestion?: string },
+  ) {
     return this.send<{ comment: Comment }>(`/workspaces/${workspaceId}/nodes/${nodeId}/comments`, "POST", body)
   }
 

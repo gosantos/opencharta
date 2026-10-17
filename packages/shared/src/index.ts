@@ -155,6 +155,10 @@ export type Comment = {
   /** The text the thread is about, copied when it was started. Empty for a comment on the whole file. */
   quote: string
   resolved: boolean
+  /** Replacement text proposed for the quote, or null for a plain comment. */
+  suggestion: string | null
+  /** True once an editor applied the suggestion to the file. */
+  accepted: boolean
   createdAt: string
   updatedAt: string
 }
@@ -163,6 +167,7 @@ export const createCommentBody = z.object({
   body: z.string().trim().min(1).max(10_000),
   quote: z.string().max(2_000).optional(),
   parentId: z.string().nullable().optional(),
+  suggestion: z.string().max(20_000).optional(),
 })
 
 export const patchCommentBody = z.object({

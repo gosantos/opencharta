@@ -117,11 +117,17 @@ CREATE TABLE IF NOT EXISTS comments (
 CREATE INDEX IF NOT EXISTS comments_node_idx ON comments(node_id);
 `
 
+const suggestions = `
+ALTER TABLE comments ADD COLUMN suggestion TEXT;
+ALTER TABLE comments ADD COLUMN accepted_at INTEGER;
+`
+
 const migrations: Array<[string, string]> = [
   ["0001_init", initial],
   ["0002_node_shares", nodeShares],
   ["0003_share_links", shareLinks],
   ["0004_comments", comments],
+  ["0005_suggestions", suggestions],
 ]
 
 export function migrate(sqlite: Database.Database) {

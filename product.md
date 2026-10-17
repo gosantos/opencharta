@@ -36,10 +36,10 @@ Teams that write in Markdown and want to share it the way they'd share a Google 
 - Folder sync on each Mac, including renames
 - The last 10 versions of each file, and restore
 - Comment threads on a file or a quoted passage, with replies and resolve
+- Suggested edits that an editor accepts into the file as a live change
 - An HTTP API for the same operations
 - The agent panel
 
 ## Not yet
 
-- Suggested edits (comments are in)
 - Apps for platforms other than Mac, or a web editor

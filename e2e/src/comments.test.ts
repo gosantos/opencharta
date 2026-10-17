@@ -92,3 +92,56 @@ test("outsiders cannot read or add comments", async () => {
     status(403),
   )
 })
+
+test("a viewer suggests an edit and an editor accepts it into the closed file", async () => {
+  const { ana, bo, workspace, file, base } = await setup()
+  await assert.rejects(bo.call(base, "POST", { body: "no quote", suggestion: "x" }), status(400))
+  const { comment } = await bo.call<{ comment: Comment }>(base, "POST", {
+    body: "Monday is safer.",
+    quote: "on Friday",
+    suggestion: "on Monday",
+  })
+  assert.equal(comment.suggestion, "on Monday")
+  await assert.rejects(bo.call(`${base}/${comment.id}/accept`, "POST"), status(403))
+
+  const accepted = await ana.call<{ comment: Comment }>(`${base}/${comment.id}/accept`, "POST")
+  assert.equal(accepted.comment.accepted, true)
+  assert.equal(accepted.comment.resolved, true)
+  const saved = await ana.content(workspace.id, file.id)
+  assert.equal(saved.content, "# RFC\n\nWe should ship on Monday.\n")
+  assert.equal(saved.revision, 2)
+  await assert.rejects(ana.call(`${base}/${comment.id}/accept`, "POST"), status(409))
+})
+
+test("accepting a suggestion while people are typing merges it live", async () => {
+  const { ana, cy, workspace, file, base } = await setup()
+  const open = await cy.open(workspace.id, file.id)
+  try {
+    const { comment } = await ana.call<{ comment: Comment }>(base, "POST", {
+      body: "Shorter",
+      quote: "We should ship",
+      suggestion: "Ship",
+    })
+    open.doc.text.insert(0, "Draft: ")
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await ana.call(`${base}/${comment.id}/accept`, "POST")
+    await waitFor(() => open.doc.text.toString().includes("Ship on Friday"), "the editor to receive the change")
+    assert.equal(open.doc.text.toString(), "Draft: # RFC\n\nShip on Friday.\n")
+    const saved = await ana.content(workspace.id, file.id)
+    assert.equal(saved.content, "Draft: # RFC\n\nShip on Friday.\n")
+  } finally {
+    open.doc.destroy()
+  }
+})
+
+test("a suggestion whose text was changed can't be accepted", async () => {
+  const { ana, workspace, file, base } = await setup()
+  const { comment } = await ana.call<{ comment: Comment }>(base, "POST", {
+    body: "x",
+    quote: "on Friday",
+    suggestion: "on Monday",
+  })
+  await ana.call(`/workspaces/${workspace.id}/nodes/${file.id}/content`, "PUT", { content: "Rewritten.\n", baseRevision: 1 })
+  await assert.rejects(ana.call(`${base}/${comment.id}/accept`, "POST"), status(409))
+  assert.equal((await ana.content(workspace.id, file.id)).content, "Rewritten.\n")
+})

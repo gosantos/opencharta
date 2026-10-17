@@ -23,7 +23,8 @@ import { changes, comments, memberships, nodeShares, nodes, shareLinks, revision
 import type { Db } from "./db/client"
 import { AppError } from "./lib/errors"
 import { hashToken, newId, newToken, sha256, verifyPassword } from "./lib/crypto"
-import { freshMarkdownState, readMarkdownState } from "./lib/yjs"
+import * as Y from "yjs"
+import { freshMarkdownState, readMarkdownState, replaceQuote } from "./lib/yjs"
 
 type NodeRow = typeof nodes.$inferSelect
 
@@ -367,11 +368,15 @@ export class WorkspaceStore {
     userId: string,
     workspaceId: string,
     nodeId: string,
-    input: { body: string; quote?: string; parentId?: string | null },
+    input: { body: string; quote?: string; parentId?: string | null; suggestion?: string },
   ) {
     this.authorize(userId, workspaceId, nodeId, "viewer")
     this.mustFile(this.db, workspaceId, nodeId)
     let quote = input.quote ?? ""
+    const suggestion = input.suggestion ?? null
+    if (suggestion !== null && (input.parentId || !quote)) {
+      throw new AppError(400, "invalid", "A suggestion needs the text it replaces.")
+    }
     if (input.parentId) {
       const parent = this.mustComment(workspaceId, nodeId, input.parentId)
       if (parent.parentId) throw new AppError(400, "invalid", "Reply to the first comment in the thread.")
@@ -390,6 +395,8 @@ export class WorkspaceStore {
         authorId: userId,
         body: input.body,
         quote,
+        suggestion,
+        acceptedAt: null,
         resolvedAt: null,
         createdAt: now,
         updatedAt: now,
@@ -434,6 +441,35 @@ export class WorkspaceStore {
     this.db.transaction((tx) => {
       tx.delete(comments).where(eq(comments.parentId, commentId)).run()
       tx.delete(comments).where(eq(comments.id, commentId)).run()
+    })
+  }
+
+  /** Checks that someone may accept a suggestion and returns what to replace. */
+  suggestionToAccept(userId: string, workspaceId: string, nodeId: string, commentId: string) {
+    this.authorize(userId, workspaceId, nodeId, "editor")
+    const comment = this.mustComment(workspaceId, nodeId, commentId)
+    if (comment.suggestion === null) throw new AppError(400, "invalid", "That comment is not a suggestion.")
+    if (comment.acceptedAt) throw new AppError(409, "accepted", "That suggestion was already accepted.")
+    return { quote: comment.quote, replacement: comment.suggestion }
+  }
+
+  markAccepted(commentId: string) {
+    const now = Date.now()
+    this.db.update(comments).set({ acceptedAt: now, resolvedAt: now }).where(eq(comments.id, commentId)).run()
+    return this.commentById(commentId)
+  }
+
+  /** Edits a file that nobody has open, through its stored live state, and records a version. */
+  editStored(userId: string, workspaceId: string, nodeId: string, change: (text: Y.Text) => boolean) {
+    return this.db.transaction((tx) => {
+      const node = this.mustFile(tx, workspaceId, nodeId)
+      const doc = new Y.Doc()
+      if (node.yjsState?.length) Y.applyUpdate(doc, node.yjsState)
+      else if (node.content) doc.getText("content").insert(0, node.content)
+      const text = doc.getText("content")
+      if (!change(text)) return false
+      this.checkpoint(tx, node, text.toString(), userId, Buffer.from(Y.encodeStateAsUpdate(doc)), Date.now())
+      return true
     })
   }
 
@@ -1090,6 +1126,8 @@ function toComment(row: typeof comments.$inferSelect, authorName: string | null)
     body: row.body,
     quote: row.quote,
     resolved: row.resolvedAt !== null,
+    suggestion: row.suggestion,
+    accepted: row.acceptedAt !== null,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   }
