@@ -1,4 +1,4 @@
-import type { Member, NodeShare, RevisionSummary, Role, ShareRole, User, Workspace, WorkspaceNode } from "@opencharta/shared"
+import type { Member, NodeShare, ShareLink, RevisionSummary, Role, ShareRole, User, Workspace, WorkspaceNode } from "@opencharta/shared"
 
 export class ApiError extends Error {
   constructor(
@@ -78,6 +78,22 @@ export class Api {
 
   unshare(workspaceId: string, nodeId: string, userId: string) {
     return this.send(`/workspaces/${workspaceId}/nodes/${nodeId}/shares/${userId}`, "DELETE")
+  }
+
+  links(workspaceId: string, nodeId: string) {
+    return this.get<{ links: ShareLink[] }>(`/workspaces/${workspaceId}/nodes/${nodeId}/links`)
+  }
+
+  createLink(workspaceId: string, nodeId: string, role: ShareRole) {
+    return this.send<{ link: ShareLink }>(`/workspaces/${workspaceId}/nodes/${nodeId}/links`, "POST", { role })
+  }
+
+  revokeLink(workspaceId: string, nodeId: string, linkId: string) {
+    return this.send(`/workspaces/${workspaceId}/nodes/${nodeId}/links/${linkId}`, "DELETE")
+  }
+
+  acceptLink(token: string) {
+    return this.send<{ workspace: Workspace; node: WorkspaceNode }>(`/links/${token}/accept`, "POST")
   }
 
   revisions(workspaceId: string, nodeId: string) {

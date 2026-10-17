@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import DOMPurify from "dompurify"
 import { marked } from "marked"
-import { roleAtLeast, type CollabPeer, type Member, type NodeShare, type RevisionSummary, type Role, type ShareRole, type User, type Workspace, type WorkspaceNode } from "@opencharta/shared"
+import { roleAtLeast, type CollabPeer, type Member, type NodeShare, type RevisionSummary, type ShareLink, type Role, type ShareRole, type User, type Workspace, type WorkspaceNode } from "@opencharta/shared"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -426,6 +426,8 @@ function ShareDialog({
   userId: string
 }) {
   const [shares, setShares] = useState<NodeShare[]>([])
+  const [links, setLinks] = useState<ShareLink[]>([])
+  const [fresh, setFresh] = useState<ShareLink | null>(null)
   const [email, setEmail] = useState("")
   const [role, setRole] = useState<ShareRole>("editor")
   const [error, setError] = useState("")
@@ -433,8 +435,14 @@ function ShareDialog({
 
   useEffect(() => {
     setShares([])
+    setLinks([])
+    setFresh(null)
     setError("")
     if (!nodeId) return
+    void api
+      .links(workspaceId, nodeId)
+      .then((result) => setLinks(result.links))
+      .catch(() => undefined)
     void api
       .shares(workspaceId, nodeId)
       .then((result) => setShares(result.shares))
@@ -514,6 +522,66 @@ function ShareDialog({
           </div>
           {error ? <p className="text-sm">{error}</p> : null}
         </form>
+        <div className="grid gap-2 border-t border-border pt-4">
+          <Label>Share by link</Label>
+          <p className="text-sm text-muted-foreground">Anyone with an account who opens the link gets access.</p>
+          {fresh?.url ? (
+            <div className="flex gap-2">
+              <Input readOnly value={fresh.url} onFocus={(event) => event.target.select()} />
+              <Button type="button" variant="outline" onClick={() => void navigator.clipboard.writeText(fresh.url ?? "")}>
+                Copy
+              </Button>
+            </div>
+          ) : null}
+          {links.length ? (
+            <ul className="divide-y divide-border">
+              {links.map((link) => (
+                <li key={link.id} className="flex items-baseline justify-between py-2 text-sm">
+                  <span>
+                    {link.role === "editor" ? "Can edit" : "Can view"}
+                    <span className="ml-2 text-muted-foreground">by {link.createdByName}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground"
+                    onClick={async () => {
+                      if (!nodeId) return
+                      await api.revokeLink(workspaceId, nodeId, link.id)
+                      setLinks((current) => current.filter((item) => item.id !== link.id))
+                      if (fresh?.id === link.id) setFresh(null)
+                    }}
+                  >
+                    Turn off
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="flex gap-2">
+            {(["viewer", "editor"] as const).map((linkRole) =>
+              linkRole === "editor" && !canGrantEditor ? null : (
+                <Button
+                  key={linkRole}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    if (!nodeId) return
+                    try {
+                      const { link } = await api.createLink(workspaceId, nodeId, linkRole)
+                      setFresh(link)
+                      setLinks((current) => [link, ...current])
+                    } catch (caught) {
+                      setError(caught instanceof ApiError ? caught.message : "Could not make a link.")
+                    }
+                  }}
+                >
+                  {linkRole === "editor" ? "New edit link" : "New view link"}
+                </Button>
+              ),
+            )}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   )

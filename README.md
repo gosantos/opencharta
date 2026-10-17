@@ -44,6 +44,8 @@ Server data defaults to `./data/opencharta.sqlite`. Override with `OPENCHARTA_DA
 
 Workspace roles apply to every file. On top of that, anyone with edit access can share a single file or folder with another account as an editor or viewer, up to their own access. That person doesn't join the workspace: they see only what was shared with them, plus the names of the folders above it, and their Mac syncs only those files.
 
+A file or folder can also have share links. Anyone signed in who opens one, by pasting it into **Open a link**, gets that access. The server stores only a hash of each link, so a link is shown once when it's made; turn it off to revoke it.
+
 The local folder is a normal directory of `.md` files plus a hidden `.opencharta/index.json`. It is not object storage. The server keeps the shared copy in SQLite.
 
 ## Agent

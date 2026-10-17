@@ -30,7 +30,7 @@ Teams that write in Markdown and want to share it the way they'd share a Google 
 ## In v1
 
 - Accounts, workspaces, and the four roles
-- Sharing a single file or folder, as editor or viewer
+- Sharing a single file or folder, as editor or viewer, with a person or by link
 - Folders and Markdown files
 - Live editing in the Mac app
 - Folder sync on each Mac, including renames
@@ -40,6 +40,5 @@ Teams that write in Markdown and want to share it the way they'd share a Google 
 
 ## Not yet
 
-- Sharing by link
 - Comments and suggestions
 - Apps for platforms other than Mac, or a web editor

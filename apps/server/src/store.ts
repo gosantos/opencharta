@@ -11,13 +11,14 @@ import {
   type NodeKind,
   type NodeShare,
   type Role,
+  type ShareLink,
   type ShareRole,
   type User,
   type Workspace,
   type WorkspaceNode,
 } from "@opencharta/shared"
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm"
-import { changes, memberships, nodeShares, nodes, revisions, sessions, users, workspaces } from "./db/schema"
+import { changes, memberships, nodeShares, nodes, shareLinks, revisions, sessions, users, workspaces } from "./db/schema"
 import type { Db } from "./db/client"
 import { AppError } from "./lib/errors"
 import { hashToken, newId, newToken, sha256, verifyPassword } from "./lib/crypto"
@@ -143,6 +144,7 @@ export class WorkspaceStore {
     this.db.transaction((tx) => {
       for (const id of ids) tx.delete(revisions).where(eq(revisions.nodeId, id)).run()
       tx.delete(nodeShares).where(eq(nodeShares.workspaceId, workspaceId)).run()
+      tx.delete(shareLinks).where(eq(shareLinks.workspaceId, workspaceId)).run()
       tx.delete(changes).where(eq(changes.workspaceId, workspaceId)).run()
       tx.delete(nodes).where(eq(nodes.workspaceId, workspaceId)).run()
       tx.delete(memberships).where(eq(memberships.workspaceId, workspaceId)).run()
@@ -267,6 +269,82 @@ export class WorkspaceStore {
       .onConflictDoUpdate({ target: [nodeShares.nodeId, nodeShares.userId], set: { role } })
       .run()
     return this.listShares(actorId, workspaceId, nodeId)
+  }
+
+  listLinks(userId: string, workspaceId: string, nodeId: string): ShareLink[] {
+    this.authorize(userId, workspaceId, nodeId, "editor")
+    return this.db
+      .select({ link: shareLinks, creator: users.name })
+      .from(shareLinks)
+      .leftJoin(users, eq(users.id, shareLinks.createdBy))
+      .where(and(eq(shareLinks.nodeId, nodeId), eq(shareLinks.workspaceId, workspaceId)))
+      .orderBy(desc(shareLinks.createdAt))
+      .all()
+      .map((row) => ({
+        id: row.link.id,
+        nodeId,
+        role: row.link.role as ShareRole,
+        createdAt: iso(row.link.createdAt),
+        createdByName: row.creator ?? "Unknown",
+      }))
+  }
+
+  /** Makes a new link and returns its secret once. */
+  createLink(userId: string, workspaceId: string, nodeId: string, role: ShareRole) {
+    const actorRole = this.authorize(userId, workspaceId, nodeId, "editor")
+    if (!roleAtLeast(actorRole, role)) throw forbidden()
+    this.mustNode(this.db, workspaceId, nodeId)
+    const token = newToken()
+    const id = newId()
+    const now = Date.now()
+    this.db
+      .insert(shareLinks)
+      .values({ id, workspaceId, nodeId, tokenHash: hashToken(token), role, createdBy: userId, createdAt: now })
+      .run()
+    const creator = this.db.select().from(users).where(eq(users.id, userId)).get()
+    return {
+      token,
+      link: { id, nodeId, role, createdAt: iso(now), createdByName: creator?.name ?? "Unknown" } as ShareLink,
+    }
+  }
+
+  revokeLink(userId: string, workspaceId: string, nodeId: string, linkId: string) {
+    this.authorize(userId, workspaceId, nodeId, "editor")
+    this.db
+      .delete(shareLinks)
+      .where(and(eq(shareLinks.id, linkId), eq(shareLinks.nodeId, nodeId), eq(shareLinks.workspaceId, workspaceId)))
+      .run()
+  }
+
+  /** Turns a link into a share for the person opening it. Never lowers access they already have. */
+  acceptLink(userId: string, token: string) {
+    const link = this.db.select().from(shareLinks).where(eq(shareLinks.tokenHash, hashToken(token))).get()
+    if (!link) throw new AppError(404, "not_found", "That link doesn't work anymore.")
+    const node = this.db
+      .select()
+      .from(nodes)
+      .where(and(eq(nodes.id, link.nodeId), isNull(nodes.deletedAt)))
+      .get()
+    if (!node) throw new AppError(404, "not_found", "The shared file was deleted.")
+    const current = this.access(userId, link.workspaceId).roleFor(link.nodeId)
+    if (!current || !roleAtLeast(current, link.role as Role)) {
+      this.db
+        .insert(nodeShares)
+        .values({
+          workspaceId: link.workspaceId,
+          nodeId: link.nodeId,
+          userId,
+          role: link.role,
+          createdBy: link.createdBy,
+          createdAt: Date.now(),
+        })
+        .onConflictDoUpdate({ target: [nodeShares.nodeId, nodeShares.userId], set: { role: link.role } })
+        .run()
+    }
+    return {
+      workspace: this.getWorkspace(userId, link.workspaceId),
+      node: this.nodeById(userId, link.workspaceId, link.nodeId),
+    }
   }
 
   unshareNode(actorId: string, workspaceId: string, nodeId: string, userId: string) {

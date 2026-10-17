@@ -112,3 +112,21 @@ export const nodeShares = sqliteTable(
     index("node_shares_user_idx").on(table.userId, table.workspaceId),
   ],
 )
+
+export const shareLinks = sqliteTable(
+  "share_links",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    nodeId: text("node_id")
+      .notNull()
+      .references(() => nodes.id),
+    tokenHash: text("token_hash").notNull().unique(),
+    role: text("role").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("share_links_node_idx").on(table.nodeId)],
+)

@@ -122,6 +122,28 @@ export const addMemberBody = z.object({
   role: roleSchema.exclude(["owner"]),
 })
 
+export type ShareLink = {
+  id: string
+  nodeId: string
+  role: ShareRole
+  createdAt: string
+  createdByName: string
+  /** Only present right after the link is created; the server keeps a hash. */
+  url?: string
+}
+
+export const createLinkBody = z.object({
+  role: z.enum(SHARE_ROLES),
+})
+
+/** Pulls the secret out of a pasted share link, or accepts the bare secret. */
+export function linkToken(input: string) {
+  const trimmed = input.trim()
+  const match = /\/l\/([A-Za-z0-9_-]+)\/?$/.exec(trimmed)
+  if (match) return match[1]!
+  return /^[A-Za-z0-9_-]{20,}$/.test(trimmed) ? trimmed : null
+}
+
 export const shareNodeBody = z.object({
   email: z.email().transform((value) => value.toLowerCase()),
   role: z.enum(SHARE_ROLES),

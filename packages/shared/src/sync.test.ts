@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { planSync, rewriteMarkdownLinks, type IndexEntry, type LocalEntry, type RemoteNode } from "./index"
+import { linkToken, planSync, rewriteMarkdownLinks, type IndexEntry, type LocalEntry, type RemoteNode } from "./index"
 
 const date = "2026-10-13"
 
@@ -154,4 +154,13 @@ test("rewrites markdown links when a file moves", () => {
     { from: "notes/weekly.md", to: "archive/weekly.md" },
   ])
   assert.equal(next, "See [notes](archive/weekly.md) and [abs](/archive/weekly.md).")
+})
+
+test("reads the secret from a pasted share link", () => {
+  const secret = "abcdefghijklmnopqrstuvwxyz012345"
+  assert.equal(linkToken(`http://10.0.0.5:8787/l/${secret}`), secret)
+  assert.equal(linkToken(`  http://host/l/${secret}/ `), secret)
+  assert.equal(linkToken(secret), secret)
+  assert.equal(linkToken("http://host/workspaces/abc"), null)
+  assert.equal(linkToken("short"), null)
 })

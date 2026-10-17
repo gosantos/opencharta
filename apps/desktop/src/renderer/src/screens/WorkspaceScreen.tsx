@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import type { Workspace } from "@opencharta/shared"
+import { linkToken, type Workspace } from "@opencharta/shared"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Api, ApiError } from "../lib/api"
@@ -17,6 +17,7 @@ export function WorkspaceScreen({
 }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [name, setName] = useState("")
+  const [link, setLink] = useState("")
   const [error, setError] = useState("")
 
   async function load() {
@@ -72,6 +73,30 @@ export function WorkspaceScreen({
       >
         <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="New workspace" required />
         <Button type="submit">Create</Button>
+      </form>
+      <form
+        className="flex gap-2"
+        onSubmit={async (event) => {
+          event.preventDefault()
+          setError("")
+          const secret = linkToken(link)
+          if (!secret) {
+            setError("That doesn't look like an OpenCharta link.")
+            return
+          }
+          try {
+            const opened = await new Api(serverUrl, token).acceptLink(secret)
+            setLink("")
+            await onOpen(opened.workspace)
+          } catch (caught) {
+            setError(caught instanceof ApiError ? caught.message : "Can't reach the server.")
+          }
+        }}
+      >
+        <Input value={link} onChange={(event) => setLink(event.target.value)} placeholder="Paste a share link" required />
+        <Button type="submit" variant="outline">
+          Open a link
+        </Button>
       </form>
       {error ? <p className="text-sm">{error}</p> : null}
     </div>

@@ -8,6 +8,7 @@ import {
   putContentBody,
   registerBody,
   shareNodeBody,
+  createLinkBody,
 } from "@opencharta/shared"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
@@ -153,6 +154,40 @@ export function createApp(db: Db, collab = new CollabHub(new WorkspaceStore(db))
     store.unshareNode(user.id, c.req.param("workspaceId"), c.req.param("nodeId"), c.req.param("userId"))
     return c.json({ ok: true })
   })
+
+  app.get("/workspaces/:workspaceId/nodes/:nodeId/links", (c) => {
+    const user = requireUser(c, store)
+    return c.json({ links: store.listLinks(user.id, c.req.param("workspaceId"), c.req.param("nodeId")) })
+  })
+
+  app.post("/workspaces/:workspaceId/nodes/:nodeId/links", async (c) => {
+    const user = requireUser(c, store)
+    const body = parse(createLinkBody, await c.req.json().catch(() => null))
+    const { token, link } = store.createLink(user.id, c.req.param("workspaceId"), c.req.param("nodeId"), body.role)
+    const url = new URL(`/l/${token}`, c.req.url).toString()
+    return c.json({ link: { ...link, url } }, 201)
+  })
+
+  app.delete("/workspaces/:workspaceId/nodes/:nodeId/links/:linkId", (c) => {
+    const user = requireUser(c, store)
+    store.revokeLink(user.id, c.req.param("workspaceId"), c.req.param("nodeId"), c.req.param("linkId"))
+    return c.json({ ok: true })
+  })
+
+  app.post("/links/:token/accept", (c) => {
+    const user = requireUser(c, store)
+    return c.json(store.acceptLink(user.id, c.req.param("token")))
+  })
+
+  // Opening a share link in a browser explains where it goes. The app accepts the pasted link.
+  app.get("/l/:token", (c) =>
+    c.html(
+      `<!doctype html><meta charset="utf-8"><title>OpenCharta link</title>` +
+        `<body style="font:16px system-ui;max-width:32rem;margin:4rem auto;padding:0 1rem">` +
+        `<h1 style="font-weight:500">Open this in OpenCharta</h1>` +
+        `<p>Copy this page's address, then in the OpenCharta app choose <b>Open a link</b> and paste it.</p></body>`,
+    ),
+  )
 
   app.get("/workspaces/:workspaceId/nodes/:nodeId/content", (c) => {
     const user = requireUser(c, store)
