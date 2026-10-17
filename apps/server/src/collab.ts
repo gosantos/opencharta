@@ -101,6 +101,16 @@ export class CollabHub {
     this.broadcast(room, { type: "presence", peers: this.peers(room) })
   }
 
+  /** Saves every open document as a version and forgets all connections. Used on shutdown. */
+  closeAll() {
+    for (const room of this.rooms.values()) {
+      this.checkpoint(room, room.lastAuthorId)
+      room.doc.destroy()
+    }
+    this.rooms.clear()
+    this.conns.clear()
+  }
+
   isActive(nodeId: string) {
     return (this.rooms.get(nodeId)?.conns.size ?? 0) > 0
   }

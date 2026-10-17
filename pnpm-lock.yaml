@@ -146,6 +146,25 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
+  e2e:
+    dependencies:
+      '@opencharta/shared':
+        specifier: workspace:*
+        version: link:../packages/shared
+      yjs:
+        specifier: ^13.6.33
+        version: 13.6.33
+    devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.19.2
+      tsx:
+        specifier: ^4.20.5
+        version: 4.23.15
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
   packages/shared:
     dependencies:
       zod:

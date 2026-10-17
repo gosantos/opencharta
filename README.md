@@ -25,7 +25,10 @@ To share the server on a local network, other people set the server field to `ht
 pnpm dev:server
 pnpm dev:desktop
 pnpm test
+pnpm test:e2e
 ```
+
+`pnpm test` runs the server tests and then the end-to-end tests. The end-to-end tests start a real server on a free port, then act as several people at once: Macs syncing temporary folders, and editors connected over WebSocket.
 
 Server data defaults to `./data/opencharta.sqlite`. Override with `OPENCHARTA_DATA`, `PORT`, and `HOST`.
 

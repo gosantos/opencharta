@@ -1,24 +1,15 @@
-import { serve } from "@hono/node-server"
-import { WebSocketServer } from "ws"
-import { createApp } from "./app"
-import { openDatabase } from "./db/client"
-import { WorkspaceStore } from "./store"
+import { startServer } from "./server"
 
-const dataFile = process.env.OPENCHARTA_DATA ?? "./data/opencharta.sqlite"
-const port = Number(process.env.PORT ?? 8787)
-const hostname = process.env.HOST ?? "0.0.0.0"
-
-const { db } = openDatabase(dataFile)
-const store = new WorkspaceStore(db)
-store.checkpointDirtyDocuments()
-const { app } = createApp(db)
-const wss = new WebSocketServer({ noServer: true })
-
-serve({
-  fetch: app.fetch,
-  port,
-  hostname,
-  websocket: { server: wss },
+const server = await startServer({
+  dataFile: process.env.OPENCHARTA_DATA ?? "./data/opencharta.sqlite",
+  port: Number(process.env.PORT ?? 8787),
+  hostname: process.env.HOST ?? "0.0.0.0",
 })
 
-console.log(`OpenCharta listening on http://${hostname}:${port}`)
+console.log(`OpenCharta listening on ${server.url}`)
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    void server.close().finally(() => process.exit(0))
+  })
+}

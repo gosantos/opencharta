@@ -10,8 +10,9 @@
     "dev": "concurrently -n server,desktop \"pnpm dev:server\" \"pnpm dev:desktop\"",
     "dev:server": "pnpm --filter @opencharta/server dev",
     "dev:desktop": "pnpm --filter @opencharta/desktop dev",
-    "test": "pnpm --filter @opencharta/server test",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "test": "pnpm --filter @opencharta/server test && pnpm --filter @opencharta/e2e test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test:e2e": "pnpm --filter @opencharta/e2e test"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
