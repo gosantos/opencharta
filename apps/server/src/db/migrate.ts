@@ -72,10 +72,34 @@ CREATE TABLE IF NOT EXISTS changes (
 );
 `
 
+const nodeShares = `
+CREATE TABLE IF NOT EXISTS node_shares (
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+  node_id TEXT NOT NULL REFERENCES nodes(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  role TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (node_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS node_shares_user_idx ON node_shares(user_id, workspace_id);
+`
+
+const migrations: Array<[string, string]> = [
+  ["0001_init", initial],
+  ["0002_node_shares", nodeShares],
+]
+
 export function migrate(sqlite: Database.Database) {
   sqlite.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY)`)
   const applied = sqlite.prepare("SELECT id FROM schema_migrations").all() as Array<{ id: string }>
-  if (applied.some((row) => row.id === "0001_init")) return
-  sqlite.exec(initial)
-  sqlite.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run("0001_init")
+  const done = new Set(applied.map((row) => row.id))
+  for (const [id, sql] of migrations) {
+    if (done.has(id)) continue
+    sqlite.transaction(() => {
+      sqlite.exec(sql)
+      sqlite.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(id)
+    })()
+  }
 }

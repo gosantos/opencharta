@@ -31,8 +31,21 @@ export type Workspace = {
   name: string
   slug: string
   role: Role
+  /** True when the person is not a member and only sees files shared with them. */
+  shared: boolean
   createdAt: string
 }
+
+export type NodeShare = {
+  nodeId: string
+  userId: string
+  email: string
+  name: string
+  role: ShareRole
+}
+
+export const SHARE_ROLES = ["editor", "viewer"] as const
+export type ShareRole = (typeof SHARE_ROLES)[number]
 
 export type Member = {
   userId: string
@@ -50,6 +63,8 @@ export type WorkspaceNode = {
   revision: number
   contentHash: string
   updatedAt: string
+  /** What the person can do with this node. Null for a folder shown only because something inside it is shared. */
+  role: Role | null
 }
 
 export type RevisionSummary = {
@@ -105,6 +120,11 @@ export const createWorkspaceBody = z.object({
 export const addMemberBody = z.object({
   email: z.email().transform((value) => value.toLowerCase()),
   role: roleSchema.exclude(["owner"]),
+})
+
+export const shareNodeBody = z.object({
+  email: z.email().transform((value) => value.toLowerCase()),
+  role: z.enum(SHARE_ROLES),
 })
 
 export const patchMemberBody = z.object({

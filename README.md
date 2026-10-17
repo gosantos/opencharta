@@ -35,13 +35,14 @@ Server data defaults to `./data/opencharta.sqlite`. Override with `OPENCHARTA_DA
 ## What v1 does
 
 - Accounts, workspaces, and roles: owner, admin, editor, viewer
+- Sharing a single file or folder with someone outside the workspace
 - Folders and Markdown files
 - Live editing in the app, with both sides kept if a folder edit races a live edit
 - A local folder mirror, including renames matched by content
 - The last 10 versions of each file, and restore
 - An HTTP API for the same operations
 
-Permissions are workspace-wide. Folder-level access is not in this version.
+Workspace roles apply to every file. On top of that, anyone with edit access can share a single file or folder with another account as an editor or viewer, up to their own access. That person doesn't join the workspace: they see only what was shared with them, plus the names of the folders above it, and their Mac syncs only those files.
 
 The local folder is a normal directory of `.md` files plus a hidden `.opencharta/index.json`. It is not object storage. The server keeps the shared copy in SQLite.
 

@@ -7,6 +7,7 @@ import {
   patchNodeBody,
   putContentBody,
   registerBody,
+  shareNodeBody,
 } from "@opencharta/shared"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
@@ -132,6 +133,24 @@ export function createApp(db: Db, collab = new CollabHub(new WorkspaceStore(db))
   app.delete("/workspaces/:workspaceId/nodes/:nodeId", (c) => {
     const user = requireUser(c, store)
     store.deleteNode(user.id, c.req.param("workspaceId"), c.req.param("nodeId"))
+    return c.json({ ok: true })
+  })
+
+  app.get("/workspaces/:workspaceId/nodes/:nodeId/shares", (c) => {
+    const user = requireUser(c, store)
+    return c.json({ shares: store.listShares(user.id, c.req.param("workspaceId"), c.req.param("nodeId")) })
+  })
+
+  app.post("/workspaces/:workspaceId/nodes/:nodeId/shares", async (c) => {
+    const user = requireUser(c, store)
+    const body = parse(shareNodeBody, await c.req.json().catch(() => null))
+    const shares = store.shareNode(user.id, c.req.param("workspaceId"), c.req.param("nodeId"), body.email, body.role)
+    return c.json({ shares }, 201)
+  })
+
+  app.delete("/workspaces/:workspaceId/nodes/:nodeId/shares/:userId", (c) => {
+    const user = requireUser(c, store)
+    store.unshareNode(user.id, c.req.param("workspaceId"), c.req.param("nodeId"), c.req.param("userId"))
     return c.json({ ok: true })
   })
 

@@ -90,3 +90,25 @@ export const changes = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.workspaceId, table.seq] })],
 )
+
+export const nodeShares = sqliteTable(
+  "node_shares",
+  {
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    nodeId: text("node_id")
+      .notNull()
+      .references(() => nodes.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    role: text("role").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.nodeId, table.userId] }),
+    index("node_shares_user_idx").on(table.userId, table.workspaceId),
+  ],
+)

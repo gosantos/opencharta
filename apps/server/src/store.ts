@@ -9,13 +9,15 @@ import {
   type ConflictDetails,
   type Member,
   type NodeKind,
+  type NodeShare,
   type Role,
+  type ShareRole,
   type User,
   type Workspace,
   type WorkspaceNode,
 } from "@opencharta/shared"
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm"
-import { changes, memberships, nodes, revisions, sessions, users, workspaces } from "./db/schema"
+import { changes, memberships, nodeShares, nodes, revisions, sessions, users, workspaces } from "./db/schema"
 import type { Db } from "./db/client"
 import { AppError } from "./lib/errors"
 import { hashToken, newId, newToken, sha256, verifyPassword } from "./lib/crypto"
@@ -91,24 +93,41 @@ export class WorkspaceStore {
       .innerJoin(workspaces, eq(workspaces.id, memberships.workspaceId))
       .where(eq(memberships.userId, userId))
       .all()
-    return rows.map((row) => ({
+    const member: Workspace[] = rows.map((row) => ({
       id: row.workspace.id,
       name: row.workspace.name,
       slug: row.workspace.slug,
       role: row.role as Role,
+      shared: false,
       createdAt: iso(row.workspace.createdAt),
     }))
+    const memberIds = new Set(member.map((workspace) => workspace.id))
+    const sharedIds = [
+      ...new Set(
+        this.db
+          .select({ workspaceId: nodeShares.workspaceId })
+          .from(nodeShares)
+          .where(eq(nodeShares.userId, userId))
+          .all()
+          .map((row) => row.workspaceId)
+          .filter((id) => !memberIds.has(id)),
+      ),
+    ]
+    return [...member, ...sharedIds.map((id) => this.getWorkspace(userId, id))]
   }
 
   getWorkspace(userId: string, workspaceId: string): Workspace {
-    const membership = this.membership(userId, workspaceId, "viewer")
+    const access = this.access(userId, workspaceId)
+    const role = access.bestRole()
+    if (!role) throw forbidden()
     const workspace = this.db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).get()
     if (!workspace) throw new AppError(404, "not_found", "Workspace not found.")
     return {
       id: workspace.id,
       name: workspace.name,
       slug: workspace.slug,
-      role: membership.role,
+      role,
+      shared: !access.member,
       createdAt: iso(workspace.createdAt),
     }
   }
@@ -123,6 +142,7 @@ export class WorkspaceStore {
       .map((row) => row.id)
     this.db.transaction((tx) => {
       for (const id of ids) tx.delete(revisions).where(eq(revisions.nodeId, id)).run()
+      tx.delete(nodeShares).where(eq(nodeShares.workspaceId, workspaceId)).run()
       tx.delete(changes).where(eq(changes.workspaceId, workspaceId)).run()
       tx.delete(nodes).where(eq(nodes.workspaceId, workspaceId)).run()
       tx.delete(memberships).where(eq(memberships.workspaceId, workspaceId)).run()
@@ -201,10 +221,60 @@ export class WorkspaceStore {
   }
 
   listNodes(userId: string, workspaceId: string): WorkspaceNode[] {
-    this.membership(userId, workspaceId, "viewer")
+    const access = this.access(userId, workspaceId)
+    if (!access.bestRole()) throw forbidden()
     const rows = this.liveNodes(workspaceId)
     const paths = pathMap(rows)
-    return rows.map((row) => toNode(row, paths.get(row.id) ?? row.name))
+    const listed: WorkspaceNode[] = []
+    for (const row of rows) {
+      const role = access.roleFor(row.id)
+      if (role || (row.kind === "folder" && access.isAncestorOfShare(row.id))) {
+        listed.push(toNode(row, paths.get(row.id) ?? row.name, role))
+      }
+    }
+    return listed
+  }
+
+  listShares(userId: string, workspaceId: string, nodeId: string): NodeShare[] {
+    this.authorize(userId, workspaceId, nodeId, "viewer")
+    this.mustNode(this.db, workspaceId, nodeId)
+    return this.db
+      .select({ share: nodeShares, user: users })
+      .from(nodeShares)
+      .innerJoin(users, eq(users.id, nodeShares.userId))
+      .where(eq(nodeShares.nodeId, nodeId))
+      .all()
+      .map((row) => ({
+        nodeId,
+        userId: row.user.id,
+        email: row.user.email,
+        name: row.user.name,
+        role: row.share.role as ShareRole,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  shareNode(actorId: string, workspaceId: string, nodeId: string, email: string, role: ShareRole) {
+    const actorRole = this.authorize(actorId, workspaceId, nodeId, "editor")
+    if (!roleAtLeast(actorRole, role)) throw forbidden()
+    this.mustNode(this.db, workspaceId, nodeId)
+    const user = this.db.select().from(users).where(eq(users.email, email)).get()
+    if (!user) throw new AppError(404, "not_found", "No account with that email yet.")
+    if (user.id === actorId) throw new AppError(400, "invalid", "You already have access.")
+    this.db
+      .insert(nodeShares)
+      .values({ workspaceId, nodeId, userId: user.id, role, createdBy: actorId, createdAt: Date.now() })
+      .onConflictDoUpdate({ target: [nodeShares.nodeId, nodeShares.userId], set: { role } })
+      .run()
+    return this.listShares(actorId, workspaceId, nodeId)
+  }
+
+  unshareNode(actorId: string, workspaceId: string, nodeId: string, userId: string) {
+    if (actorId !== userId) this.authorize(actorId, workspaceId, nodeId, "editor")
+    this.db
+      .delete(nodeShares)
+      .where(and(eq(nodeShares.nodeId, nodeId), eq(nodeShares.userId, userId), eq(nodeShares.workspaceId, workspaceId)))
+      .run()
   }
 
   createNode(
@@ -212,7 +282,7 @@ export class WorkspaceStore {
     workspaceId: string,
     input: { parentId: string | null; kind: NodeKind; name: string; content?: string },
   ) {
-    this.membership(userId, workspaceId, "editor")
+    this.authorize(userId, workspaceId, input.parentId, "editor")
     const name = input.kind === "file" ? normalizeFileName(input.name) : input.name.trim()
     const invalid = validateNodeName(name)
     if (invalid) throw new AppError(400, "invalid", invalid)
@@ -273,10 +343,11 @@ export class WorkspaceStore {
     nodeId: string,
     input: { name?: string; parentId?: string | null },
   ) {
-    this.membership(userId, workspaceId, "editor")
+    this.authorize(userId, workspaceId, nodeId, "editor")
     this.db.transaction((tx) => {
       const node = this.mustNode(tx, workspaceId, nodeId)
       const parentId = input.parentId === undefined ? node.parentId : input.parentId
+      if (parentId !== node.parentId) this.authorize(userId, workspaceId, parentId, "editor")
       const name = input.name
         ? node.kind === "file"
           ? normalizeFileName(input.name)
@@ -305,7 +376,7 @@ export class WorkspaceStore {
   }
 
   deleteNode(userId: string, workspaceId: string, nodeId: string) {
-    this.membership(userId, workspaceId, "editor")
+    this.authorize(userId, workspaceId, nodeId, "editor")
     const now = Date.now()
     this.db.transaction((tx) => {
       const node = tx
@@ -326,7 +397,7 @@ export class WorkspaceStore {
   }
 
   getContent(userId: string, workspaceId: string, nodeId: string) {
-    this.membership(userId, workspaceId, "viewer")
+    this.authorize(userId, workspaceId, nodeId, "viewer")
     const node = this.db
       .select()
       .from(nodes)
@@ -343,7 +414,7 @@ export class WorkspaceStore {
   }
 
   putContent(userId: string, workspaceId: string, nodeId: string, content: string, baseRevision: number) {
-    this.membership(userId, workspaceId, "editor")
+    this.authorize(userId, workspaceId, nodeId, "editor")
     return this.db.transaction((tx) => {
       const node = this.mustFile(tx, workspaceId, nodeId)
       const checkpoint = this.checkpointOf(node, tx)
@@ -357,7 +428,7 @@ export class WorkspaceStore {
   }
 
   listRevisions(userId: string, workspaceId: string, nodeId: string) {
-    this.membership(userId, workspaceId, "viewer")
+    this.authorize(userId, workspaceId, nodeId, "viewer")
     this.mustFile(this.db, workspaceId, nodeId)
     const rows = this.db
       .select({
@@ -384,7 +455,8 @@ export class WorkspaceStore {
   }
 
   getRevision(userId: string, workspaceId: string, nodeId: string, revision: number) {
-    this.membership(userId, workspaceId, "viewer")
+    this.authorize(userId, workspaceId, nodeId, "viewer")
+    this.mustFile(this.db, workspaceId, nodeId)
     const row = this.db
       .select()
       .from(revisions)
@@ -395,7 +467,7 @@ export class WorkspaceStore {
   }
 
   restoreRevision(userId: string, workspaceId: string, nodeId: string, revision: number) {
-    this.membership(userId, workspaceId, "editor")
+    this.authorize(userId, workspaceId, nodeId, "editor")
     return this.db.transaction((tx) => {
       const node = this.mustFile(tx, workspaceId, nodeId)
       const row = tx
@@ -410,7 +482,8 @@ export class WorkspaceStore {
   }
 
   listChanges(userId: string, workspaceId: string, since: number) {
-    this.membership(userId, workspaceId, "viewer")
+    const access = this.access(userId, workspaceId)
+    if (!access.bestRole()) throw forbidden()
     const latest = this.db
       .select({ value: sql<number>`coalesce(max(${changes.seq}), 0)` })
       .from(changes)
@@ -424,7 +497,8 @@ export class WorkspaceStore {
       .orderBy(changes.seq)
       .limit(1000)
       .all()
-    const records: ChangeRecord[] = rows.map((row) => ({
+    const visible = access.member ? rows : rows.filter((row) => access.roleFor(row.nodeId))
+    const records: ChangeRecord[] = visible.map((row) => ({
       seq: row.seq,
       op: row.op as ChangeOp,
       nodeId: row.nodeId,
@@ -433,14 +507,14 @@ export class WorkspaceStore {
       payload: JSON.parse(row.payload) as Record<string, unknown>,
     }))
     return {
-      cursor: records.at(-1)?.seq ?? cursor,
-      hasMore: records.length === 1000,
+      cursor: rows.at(-1)?.seq ?? cursor,
+      hasMore: rows.length === 1000,
       changes: records,
     }
   }
 
   collabNode(userId: string, workspaceId: string, nodeId: string) {
-    const membership = this.membership(userId, workspaceId, "viewer")
+    const role = this.authorize(userId, workspaceId, nodeId, "viewer")
     const node = this.db
       .select()
       .from(nodes)
@@ -448,7 +522,7 @@ export class WorkspaceStore {
       .get()
     if (!node || node.kind !== "file") throw new AppError(404, "not_found", "File not found.")
     const user = this.db.select().from(users).where(eq(users.id, userId)).get()
-    return { node, role: membership.role, name: user?.name ?? "Someone" }
+    return { node, role, name: user?.name ?? "Someone" }
   }
 
   saveLive(nodeId: string, content: string, yjsState: Buffer) {
@@ -507,6 +581,40 @@ export class WorkspaceStore {
     return { ...membership, role: membership.role as Role }
   }
 
+  private access(userId: string, workspaceId: string) {
+    const membership = this.db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.workspaceId, workspaceId), eq(memberships.userId, userId)))
+      .get()
+    const shares = this.db
+      .select()
+      .from(nodeShares)
+      .where(and(eq(nodeShares.workspaceId, workspaceId), eq(nodeShares.userId, userId)))
+      .all()
+    const loadParents = () =>
+      new Map(
+        this.db
+          .select({ id: nodes.id, parentId: nodes.parentId })
+          .from(nodes)
+          .where(eq(nodes.workspaceId, workspaceId))
+          .all()
+          .map((row) => [row.id, row.parentId]),
+      )
+    return new Access(
+      (membership?.role as Role | undefined) ?? null,
+      new Map(shares.map((share) => [share.nodeId, share.role as Role])),
+      loadParents,
+    )
+  }
+
+  /** Throws unless the person has at least `minimum` on the node, or on the workspace root when nodeId is null. */
+  private authorize(userId: string, workspaceId: string, nodeId: string | null, minimum: Role) {
+    const role = this.access(userId, workspaceId).roleFor(nodeId)
+    if (!role || !roleAtLeast(role, minimum)) throw forbidden()
+    return role
+  }
+
   private assertOtherOwner(workspaceId: string, exceptUserId: string) {
     const owners = this.db
       .select()
@@ -561,7 +669,7 @@ export class WorkspaceStore {
     return node
   }
 
-  private mustNode(tx: Tx, workspaceId: string, nodeId: string) {
+  private mustNode(tx: Tx | Db, workspaceId: string, nodeId: string) {
     const node = tx
       .select()
       .from(nodes)
@@ -758,7 +866,7 @@ function descendantIds(rows: NodeRow[], rootId: string) {
   return ids
 }
 
-function toNode(row: NodeRow, path: string): WorkspaceNode {
+function toNode(row: NodeRow, path: string, role: Role | null): WorkspaceNode {
   return {
     id: row.id,
     parentId: row.parentId,
@@ -768,6 +876,7 @@ function toNode(row: NodeRow, path: string): WorkspaceNode {
     revision: row.revision,
     contentHash: row.contentHash,
     updatedAt: iso(row.updatedAt),
+    role,
   }
 }
 
@@ -780,6 +889,67 @@ function nodePayload(row: NodeRow, path: string) {
     revision: row.revision,
     contentHash: row.contentHash,
   }
+}
+
+function forbidden() {
+  return new AppError(403, "forbidden", "You do not have access to do that.")
+}
+
+/** A person's access in one workspace: their member role, plus shares on single files and folders. */
+class Access {
+  private parents: Map<string, string | null> | null = null
+
+  constructor(
+    readonly member: Role | null,
+    private readonly shares: Map<string, Role>,
+    private readonly loadParents: () => Map<string, string | null>,
+  ) {}
+
+  bestRole(): Role | null {
+    let best = this.member
+    for (const role of this.shares.values()) best = higher(best, role)
+    return best
+  }
+
+  roleFor(nodeId: string | null): Role | null {
+    let best = this.member
+    if (!this.shares.size || !nodeId) return best
+    const parents = this.parentMap()
+    const seen = new Set<string>()
+    let id: string | null = nodeId
+    while (id && !seen.has(id)) {
+      seen.add(id)
+      best = higher(best, this.shares.get(id) ?? null)
+      id = parents.get(id) ?? null
+    }
+    return best
+  }
+
+  /** A folder that holds something shared, so the shared item has a place in the tree. */
+  isAncestorOfShare(folderId: string) {
+    const parents = this.parentMap()
+    for (const sharedId of this.shares.keys()) {
+      let id = parents.get(sharedId) ?? null
+      const seen = new Set<string>()
+      while (id && !seen.has(id)) {
+        if (id === folderId) return true
+        seen.add(id)
+        id = parents.get(id) ?? null
+      }
+    }
+    return false
+  }
+
+  private parentMap() {
+    this.parents ??= this.loadParents()
+    return this.parents
+  }
+}
+
+function higher(a: Role | null, b: Role | null) {
+  if (!a) return b
+  if (!b) return a
+  return roleAtLeast(a, b) ? a : b
 }
 
 function conflict(nodeId: string, serverRevision: number, serverContent: string, serverHash: string) {
