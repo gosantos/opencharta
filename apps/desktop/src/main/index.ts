@@ -8,6 +8,9 @@ import { AgentManager, type AgentSessionRef } from "./agent"
 import { loadState, saveState } from "./state"
 import { syncFolder } from "./sync"
 
+// Lets tests run the app with a clean, throwaway profile.
+if (process.env.OPENCHARTA_USER_DATA) app.setPath("userData", process.env.OPENCHARTA_USER_DATA)
+
 if (!app.isPackaged && process.env.OPENCHARTA_DEBUG_PORT) {
   app.commandLine.appendSwitch("remote-debugging-port", process.env.OPENCHARTA_DEBUG_PORT)
 }

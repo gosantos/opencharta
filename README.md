@@ -26,9 +26,10 @@ pnpm dev:server
 pnpm dev:desktop
 pnpm test
 pnpm test:e2e
+pnpm test:ui
 ```
 
-`pnpm test` runs the server tests and then the end-to-end tests. The end-to-end tests start a real server on a free port, then act as several people at once: Macs syncing temporary folders, and editors connected over WebSocket.
+`pnpm test` runs the server tests and then the end-to-end tests. The end-to-end tests start a real server on a free port, then act as several people at once: Macs syncing temporary folders, and editors connected over WebSocket. `pnpm test:ui` builds the Mac app and drives it with Playwright against a real server.
 
 Server data defaults to `./data/opencharta.sqlite`. Override with `OPENCHARTA_DATA`, `PORT`, and `HOST`.
 

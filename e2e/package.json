@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "tsx --test --test-concurrency=1 src/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:ui": "pnpm --filter @opencharta/desktop build && tsx --test --test-concurrency=1 ui/*.test.ts"
   },
   "dependencies": {
     "@opencharta/shared": "workspace:*",
@@ -13,6 +14,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "playwright": "^1.64.1",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }

@@ -52,6 +52,14 @@ export class Client {
     return new Client(url, body.token, body.user)
   }
 
+  static async login(url: string, email: string) {
+    const body = await request<{ token: string; user: Client["user"] }>(url, "/auth/login", "POST", null, {
+      email,
+      password: "password123",
+    })
+    return new Client(url, body.token, body.user)
+  }
+
   call<T>(path: string, method = "GET", body?: unknown) {
     return request<T>(this.url, path, method, this.token, body)
   }

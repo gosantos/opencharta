@@ -12,7 +12,8 @@
     "dev:desktop": "pnpm --filter @opencharta/desktop dev",
     "test": "pnpm --filter @opencharta/server test && pnpm --filter @opencharta/e2e test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test:e2e": "pnpm --filter @opencharta/e2e test"
+    "test:e2e": "pnpm --filter @opencharta/e2e test",
+    "test:ui": "pnpm --filter @opencharta/e2e test:ui"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
