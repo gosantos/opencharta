@@ -18,12 +18,14 @@ export function AuthScreen({
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [pending, setPending] = useState(false)
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     setPending(true)
     setError("")
+    setFieldErrors({})
     try {
       const api = new Api(url, null)
       const result = creating
@@ -31,9 +33,20 @@ export function AuthScreen({
         : await api.login({ email, password })
       await onSignedIn({ serverUrl: url, token: result.token, user: result.user })
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Can't reach the server.")
+      if (caught instanceof ApiError && Object.keys(caught.fields).length > 0) {
+        setFieldErrors(caught.fields)
+      } else {
+        setError(caught instanceof ApiError ? caught.message : "Can't reach the server.")
+      }
     } finally {
       setPending(false)
+    }
+  }
+
+  function edit(field: string, set: (value: string) => void) {
+    return (value: string) => {
+      set(value)
+      setFieldErrors(({ [field]: _, ...rest }) => rest)
     }
   }
 
@@ -45,9 +58,26 @@ export function AuthScreen({
       </div>
       <div className="grid gap-4">
         <Field label="Server" value={url} onChange={setUrl} type="url" />
-        {creating ? <Field label="Name" value={name} onChange={setName} autoFocus /> : null}
-        <Field label="Email" value={email} onChange={setEmail} type="email" autoFocus={!creating} />
-        <Field label="Password" value={password} onChange={setPassword} type="password" />
+        {creating ? (
+          <Field label="Name" value={name} onChange={edit("name", setName)} error={fieldErrors.name} autoFocus />
+        ) : null}
+        <Field
+          label="Email"
+          value={email}
+          onChange={edit("email", setEmail)}
+          error={fieldErrors.email}
+          type="email"
+          autoFocus={!creating}
+        />
+        <Field
+          label="Password"
+          value={password}
+          onChange={edit("password", setPassword)}
+          error={fieldErrors.password ?? (creating ? "Use at least 8 characters." : undefined)}
+          hint={creating && !fieldErrors.password}
+          minLength={creating ? 8 : undefined}
+          type="password"
+        />
       </div>
       {error ? <p className="text-sm">{error}</p> : null}
       <div className="flex items-center gap-4">
@@ -60,6 +90,7 @@ export function AuthScreen({
           onClick={() => {
             setCreating((value) => !value)
             setError("")
+            setFieldErrors({})
           }}
         >
           {creating ? "Have an account? Sign in" : "Create an account"}
@@ -73,12 +104,19 @@ function Field({
   label,
   value,
   onChange,
+  error,
+  hint = false,
+  minLength,
   type = "text",
   autoFocus,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
+  /** Shown under the input. Styled as an error unless `hint` is set. */
+  error?: string
+  hint?: boolean
+  minLength?: number
   type?: string
   autoFocus?: boolean
 }) {
@@ -89,9 +127,14 @@ function Field({
         type={type}
         value={value}
         autoFocus={autoFocus}
+        minLength={minLength}
+        aria-invalid={error && !hint ? true : undefined}
         onChange={(event) => onChange(event.target.value)}
         required
       />
+      {error ? (
+        <p className={hint ? "text-xs text-muted-foreground" : "text-xs text-destructive"}>{error}</p>
+      ) : null}
     </div>
   )
 }
