@@ -14,10 +14,15 @@ const theme = EditorView.theme({
 export function MarkdownEditor({
   text,
   onSave,
+  onSelection,
 }: {
   text: Y.Text
   onSave: () => void
+  /** The selected text, or "" when nothing is selected. */
+  onSelection?: (selected: string) => void
 }) {
+  const selectionRef = useRef(onSelection)
+  selectionRef.current = onSelection
   const host = useRef<HTMLDivElement>(null)
   const saveRef = useRef(onSave)
   saveRef.current = onSave
@@ -47,6 +52,10 @@ export function MarkdownEditor({
           EditorView.lineWrapping,
           theme,
           EditorView.updateListener.of((update) => {
+            if (update.selectionSet) {
+              const range = update.state.selection.main
+              selectionRef.current?.(update.state.sliceDoc(range.from, range.to))
+            }
             if (!update.docChanged || applying) return
             const edits: Array<{ from: number; to: number; insert: string }> = []
             update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {

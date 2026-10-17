@@ -1,4 +1,4 @@
-import type { Member, NodeShare, ShareLink, RevisionSummary, Role, ShareRole, User, Workspace, WorkspaceNode } from "@opencharta/shared"
+import type { Comment, Member, NodeShare, ShareLink, RevisionSummary, Role, ShareRole, User, Workspace, WorkspaceNode } from "@opencharta/shared"
 
 export class ApiError extends Error {
   constructor(
@@ -78,6 +78,22 @@ export class Api {
 
   unshare(workspaceId: string, nodeId: string, userId: string) {
     return this.send(`/workspaces/${workspaceId}/nodes/${nodeId}/shares/${userId}`, "DELETE")
+  }
+
+  comments(workspaceId: string, nodeId: string) {
+    return this.get<{ comments: Comment[] }>(`/workspaces/${workspaceId}/nodes/${nodeId}/comments`)
+  }
+
+  addComment(workspaceId: string, nodeId: string, body: { body: string; quote?: string; parentId?: string }) {
+    return this.send<{ comment: Comment }>(`/workspaces/${workspaceId}/nodes/${nodeId}/comments`, "POST", body)
+  }
+
+  updateComment(workspaceId: string, nodeId: string, commentId: string, body: { body?: string; resolved?: boolean }) {
+    return this.send<{ comment: Comment }>(`/workspaces/${workspaceId}/nodes/${nodeId}/comments/${commentId}`, "PATCH", body)
+  }
+
+  deleteComment(workspaceId: string, nodeId: string, commentId: string) {
+    return this.send(`/workspaces/${workspaceId}/nodes/${nodeId}/comments/${commentId}`, "DELETE")
   }
 
   links(workspaceId: string, nodeId: string) {

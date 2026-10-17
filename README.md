@@ -40,6 +40,7 @@ Server data defaults to `./data/opencharta.sqlite`. Override with `OPENCHARTA_DA
 - Live editing in the app, with both sides kept if a folder edit races a live edit
 - A local folder mirror, including renames matched by content
 - The last 10 versions of each file, and restore
+- Comment threads on a file or a selected passage, with replies and resolve. Anyone who can read a file can comment; editors can resolve and delete any thread
 - An HTTP API for the same operations
 
 Workspace roles apply to every file. On top of that, anyone with edit access can share a single file or folder with another account as an editor or viewer, up to their own access. That person doesn't join the workspace: they see only what was shared with them, plus the names of the folders above it, and their Mac syncs only those files.

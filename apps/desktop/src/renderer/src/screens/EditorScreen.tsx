@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { AgentContextFile, SyncStatus } from "../../../shared/bridge"
+import { CommentsPanel } from "../components/CommentsPanel"
 import { AgentPanel } from "../components/AgentPanel"
 import { MarkdownEditor } from "../components/MarkdownEditor"
 import { Api, ApiError } from "../lib/api"
@@ -48,6 +49,9 @@ export function EditorScreen({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [membersOpen, setMembersOpen] = useState(false)
   const [sharing, setSharing] = useState<WorkspaceNode | null>(null)
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [selection, setSelection] = useState("")
+  const [commentsVersion, setCommentsVersion] = useState(0)
   const [mode, setMode] = useState<"edit" | "view">("edit")
   const [agentOpen, setAgentOpen] = useState(true)
   const liveRef = useRef<LiveDoc | null>(null)
@@ -167,6 +171,11 @@ export function EditorScreen({
               </Button>
             ) : null}
             {selected ? (
+              <Button variant="ghost" size="sm" onClick={() => setCommentsOpen((open) => !open)}>
+                {commentsOpen ? "Hide comments" : "Comments"}
+              </Button>
+            ) : null}
+            {selected ? (
               <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
                 History
               </Button>
@@ -179,7 +188,8 @@ export function EditorScreen({
             </Button>
           </div>
         </header>
-        <div className="min-h-0 flex-1 overflow-auto px-10 py-8">
+        <div className="flex min-h-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto px-10 py-8">
           {error ? <p className="mb-4 text-sm">{error}</p> : null}
           {selected ? (
             <Document
@@ -193,10 +203,25 @@ export function EditorScreen({
               onLiveDoc={(doc) => {
                 liveRef.current = doc
               }}
+              onSelection={setSelection}
+              onComments={() => setCommentsVersion((version) => version + 1)}
             />
           ) : (
             <p className="font-serif text-xl text-muted-foreground">Select a file, or create one.</p>
           )}
+        </div>
+        {selected && commentsOpen ? (
+          <CommentsPanel
+            key={selected.id}
+            api={api}
+            workspaceId={workspace.id}
+            nodeId={selected.id}
+            userId={user.id}
+            role={selected.role}
+            selection={selection}
+            version={commentsVersion}
+          />
+        ) : null}
         </div>
       </section>
       {agentOpen ? (
@@ -350,6 +375,8 @@ function Document({
   userId,
   viewing,
   onLiveDoc,
+  onSelection,
+  onComments,
 }: {
   serverUrl: string
   token: string
@@ -358,7 +385,11 @@ function Document({
   userId: string
   viewing: boolean
   onLiveDoc?: (doc: LiveDoc | null) => void
+  onSelection?: (selected: string) => void
+  onComments?: () => void
 }) {
+  const commentsRef = useRef(onComments)
+  commentsRef.current = onComments
   const [live, setLive] = useState<LiveDoc | null>(null)
   const [ready, setReady] = useState(false)
   const [peers, setPeers] = useState<CollabPeer[]>([])
@@ -377,6 +408,7 @@ function Document({
       onPeers: setPeers,
       onRevision: () => undefined,
       onError: setError,
+      onComments: () => commentsRef.current?.(),
     })
     doc.text.observe(() => setPreview(doc.text.toString()))
     setLive(doc)
@@ -400,7 +432,7 @@ function Document({
       {viewing ? (
         <article className="markdown" dangerouslySetInnerHTML={{ __html: html || "<p></p>" }} />
       ) : ready && live ? (
-        <MarkdownEditor text={live.text} onSave={() => live.checkpoint()} />
+        <MarkdownEditor text={live.text} onSave={() => live.checkpoint()} onSelection={onSelection} />
       ) : (
         <p className="text-sm text-muted-foreground">Opening…</p>
       )}
