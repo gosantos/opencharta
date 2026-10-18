@@ -19,6 +19,12 @@ pnpm dev
 
 That starts the server on `http://127.0.0.1:8787` and opens the Mac app. In the app, create an account, create a workspace, then choose a folder to sync.
 
+If `pnpm dev` fails with `Error: Electron uninstall`, the Electron binary was not downloaded during install. Download it, then run `pnpm dev` again:
+
+```sh
+node apps/desktop/node_modules/electron/install.js
+```
+
 To share the server on a local network, other people set the server field to `http://<this-machine>:8787`.
 
 ```sh
