@@ -270,6 +270,45 @@ body {
   padding-left: 1.2rem;
 }
 
+/* Tailwind's reset removes list markers; bring them back for rendered Markdown. */
+.markdown ul,
+.agent-markdown ul {
+  list-style: disc;
+}
+
+.markdown ol,
+.agent-markdown ol {
+  list-style: decimal;
+}
+
+.markdown li::marker,
+.agent-markdown li::marker {
+  color: var(--muted-foreground);
+}
+
+/* Task list items ("- [ ] item") already show a checkbox. */
+.markdown li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+
+.markdown table {
+  margin: 1rem 0;
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 0.4rem 1.5rem 0.4rem 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown th {
+  border-bottom-color: var(--border);
+  font-weight: 600;
+}
+
 .markdown a {
   color: var(--brand-ink);
   text-underline-offset: 3px;
