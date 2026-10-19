@@ -299,7 +299,7 @@ export function EditorScreen({
           </div>
         </div>
       </aside>
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="drag flex h-12 shrink-0 items-center justify-between gap-4 border-b border-line-soft px-4">
           <div className="no-drag flex min-w-0 items-center gap-1.5 text-[13px]">
             {selected ? (
