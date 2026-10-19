@@ -116,8 +116,9 @@ function AppInner() {
 
 function Shell({ children }: { children?: React.ReactNode }) {
   return (
-    <main className="drag h-full bg-white text-black">
-      <div className="no-drag h-full pl-24">{children}</div>
+    <main className="relative h-full bg-background text-foreground">
+      <div aria-hidden="true" className="drag absolute inset-x-0 top-0 z-10 h-12" />
+      <div className="h-full">{children}</div>
     </main>
   )
 }
@@ -132,13 +133,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { message: string
   render() {
     if (this.state.message) {
       return (
-        <main className="grid h-full place-items-center bg-white text-black">
+        <main className="grid h-full place-items-center bg-background text-foreground">
           <div className="max-w-sm text-center">
             <p className="font-serif text-xl">This view hit a problem.</p>
             <p className="mt-2 text-sm text-muted-foreground">{this.state.message}</p>
             <button
               type="button"
-              className="mt-4 rounded-md border border-border px-3 py-1.5 text-sm"
+              className="mt-4 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
               onClick={() => this.setState({ message: null })}
             >
               Try again

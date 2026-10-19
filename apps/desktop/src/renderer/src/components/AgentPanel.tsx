@@ -3,6 +3,7 @@ import DOMPurify from "dompurify"
 import { marked } from "marked"
 import type { AgentMessage, AgentPart, AgentPermission, AgentSettings, AgentState } from "@opencharta/shared"
 import type { AgentContextFile } from "../../../shared/bridge"
+import { ArrowUp, Asterisk, Square } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -80,11 +81,19 @@ export function AgentPanel({
   }
 
   return (
-    <aside className="flex h-full w-[360px] shrink-0 flex-col border-l border-border bg-white">
-      <header className="drag flex h-14 items-center justify-between gap-2 border-b border-border px-4">
-        <div className="flex items-center gap-2">
-          <span className={cn("size-2 rounded-full", statusDot(state.status.state))} />
-          <span className="text-sm font-medium">Agent</span>
+    <aside className="flex h-full w-[380px] shrink-0 flex-col border-l border-line-soft bg-background">
+      <header className="drag flex h-12 items-center justify-between gap-2 border-b border-line-soft px-3.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span aria-hidden="true" className="flex size-[26px] shrink-0 items-center justify-center rounded-lg bg-agent text-background">
+            <Asterisk className="size-3.5" strokeWidth={2.4} />
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="flex items-center gap-1.5 text-sm font-semibold">
+              Agent
+              <span className={cn("size-1.5 rounded-full", statusDot(state.status.state))} />
+            </span>
+            <span className="truncate text-[11px] text-subtle-foreground">Works on the files in your folder</span>
+          </span>
         </div>
         <div className="no-drag flex items-center gap-1">
           {connected ? (
@@ -136,14 +145,17 @@ export function AgentPanel({
               <MessageView key={message.id} message={message} />
             ))}
             {state.running ? (
-              <p className="text-xs text-muted-foreground">Working…</p>
+              <p className="flex items-center gap-2 text-xs font-medium text-agent-ink">
+                <span aria-hidden="true" className="size-1.5 animate-pulse rounded-full bg-agent" />
+                Working…
+              </p>
             ) : null}
           </div>
         )}
       </div>
 
       {state.permissions.length ? (
-        <div className="border-t border-border">
+        <div className="border-t border-line-soft">
           {state.permissions.map((permission) => (
             <PermissionView
               key={permission.id}
@@ -157,7 +169,7 @@ export function AgentPanel({
       ) : null}
 
       {syncRoot ? (
-        <div className="border-t border-border p-3">
+        <div className="border-t border-line-soft p-3">
           {error ? <p className="mb-2 text-xs">{error}</p> : null}
           {activeDoc ? (
             <button
@@ -170,15 +182,15 @@ export function AgentPanel({
               }
               className={cn(
                 "mb-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs",
-                attachFile ? "border-black text-black" : "border-border text-muted-foreground",
+                attachFile ? "border-agent text-agent-ink" : "border-border text-muted-foreground",
               )}
             >
-              <span className={cn("size-1.5 shrink-0 rounded-full", attachFile ? "bg-black" : "bg-border")} />
+              <span className={cn("size-1.5 shrink-0 rounded-full", attachFile ? "bg-agent" : "bg-border")} />
               <span className="truncate">{activeDoc.name}</span>
             </button>
           ) : null}
           <textarea
-            className="h-20 w-full resize-none rounded-md border border-input bg-white p-2 text-sm outline-none focus-visible:border-ring disabled:opacity-50"
+            className="h-20 w-full resize-none rounded-lg border border-input bg-background p-2.5 text-sm outline-none focus-visible:border-agent focus-visible:ring-[3px] focus-visible:ring-agent/15 disabled:opacity-50"
             placeholder={connected ? "Tell the agent what to change…" : "Connect to start chatting"}
             value={text}
             disabled={!connected}
@@ -194,10 +206,12 @@ export function AgentPanel({
             <span className="truncate text-xs text-muted-foreground">{state.status.message}</span>
             {state.running ? (
               <Button variant="outline" size="sm" onClick={() => void run(() => window.opencharta.agentInterrupt())}>
+                <Square className="size-3 fill-current" />
                 Stop
               </Button>
             ) : (
-              <Button size="sm" disabled={!connected || !text.trim()} onClick={() => void send()}>
+              <Button variant="agent" size="sm" disabled={!connected || !text.trim()} onClick={() => void send()}>
+                <ArrowUp />
                 Send
               </Button>
             )}
@@ -222,9 +236,11 @@ export function AgentPanel({
 function MessageView({ message }: { message: AgentMessage }) {
   if (message.role === "user") {
     return (
-      <div>
-        <p className="mb-1 text-xs font-medium text-muted-foreground">You</p>
-        <p className="text-sm whitespace-pre-wrap">{textOf(message.parts)}</p>
+      <div className="flex justify-end">
+        <p className="max-w-[88%] rounded-[12px_12px_4px_12px] bg-foreground px-3 py-2 text-sm whitespace-pre-wrap text-background">
+          <span className="sr-only">You: </span>
+          {textOf(message.parts)}
+        </p>
       </div>
     )
   }
@@ -248,22 +264,22 @@ function PartView({ part }: { part: AgentPart }) {
     )
   }
   if (part.kind === "error") {
-    return <p className="border-l-2 border-black pl-2 text-sm">{part.text}</p>
+    return <p className="border-l-2 border-destructive pl-2 text-sm">{part.text}</p>
   }
   if (part.kind === "tool") {
     return (
-      <details className="rounded-md border border-border text-xs">
+      <details className="rounded-md border border-line-soft bg-muted/50 text-xs">
         <summary className="flex cursor-pointer select-none items-center gap-2 px-2 py-1.5">
           <span className="font-medium">{part.name}</span>
           <span className="text-muted-foreground">{toolLabel(part.status)}</span>
         </summary>
         {part.input !== undefined ? (
-          <pre className="overflow-auto border-t border-border px-2 py-1.5 text-[11px]">
+          <pre className="overflow-auto border-t border-line-soft px-2 py-1.5 text-[11px]">
             {stringify(part.input)}
           </pre>
         ) : null}
         {part.output ? (
-          <pre className="max-h-48 overflow-auto border-t border-border px-2 py-1.5 text-[11px] whitespace-pre-wrap">
+          <pre className="max-h-48 overflow-auto border-t border-line-soft px-2 py-1.5 text-[11px] whitespace-pre-wrap">
             {part.output}
           </pre>
         ) : null}
@@ -282,7 +298,7 @@ function PermissionView({
   onReply: (decision: "once" | "always" | "reject") => void
 }) {
   return (
-    <div className="border-b border-border p-3 text-sm">
+    <div className="border-b border-conflict-border bg-conflict p-3 text-sm">
       <p>
         The agent wants to <span className="font-medium">{permission.action}</span>
         {permission.resources.length ? `: ${permission.resources.join(", ")}` : ""}
@@ -344,7 +360,7 @@ function SettingsDialog({
           <div className="grid gap-2">
             <Label>Connection</Label>
             <select
-              className="h-9 rounded-md border border-input bg-white px-2 text-sm"
+              className="h-8 rounded-md border border-input bg-background px-2 text-sm"
               value={mode}
               onChange={(event) => setMode(event.target.value as AgentSettings["mode"])}
             >
@@ -392,7 +408,7 @@ function SettingsDialog({
 
 function Notice({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
-    <div className="rounded-md border border-dashed border-border p-4">
+    <div className="rounded-lg border border-agent/20 bg-agent-soft/60 p-4">
       <p className="text-sm font-medium">{title}</p>
       <p className="mt-1 text-xs text-muted-foreground">{body}</p>
       {action ? <div className="mt-3">{action}</div> : null}
@@ -423,9 +439,9 @@ function stringify(value: unknown) {
 }
 
 function statusDot(state: AgentState["status"]["state"]) {
-  if (state === "ready") return "bg-black"
+  if (state === "ready") return "bg-primary"
   if (state === "connecting") return "animate-pulse bg-muted-foreground"
-  if (state === "error") return "border border-black bg-white"
+  if (state === "error") return "border border-destructive bg-background"
   return "bg-border"
 }
 

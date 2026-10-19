@@ -6,8 +6,8 @@ import { useEffect, useRef } from "react"
 import type * as Y from "yjs"
 
 const theme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "#ffffff", color: "#111111" },
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": { backgroundColor: "#e8e8e8" },
+  "&": { height: "100%", backgroundColor: "var(--background)", color: "var(--foreground)" },
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": { backgroundColor: "var(--selection)" },
   "&.cm-focused": { outline: "none" },
 })
 
